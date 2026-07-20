@@ -24,6 +24,16 @@ context so any Claude Code session starts fully briefed.
 4. **Recall has a ceiling too**: only some fraction of deals leak (academic
    estimates ~25-60%; see Augustin, Brenner & Subrahmanyam, NYU, on informed
    options trading ahead of M&A).
+5. **Walk-forward (synthetic) shows variance, not overfit, is the problem.**
+   `src/walk_forward.py`: 2-year market, tune 72-config grid on year 1, score
+   frozen on year 2, repeated over 10 seeds. Mean OOS precision ~5% vs ~4.5%
+   in-sample — no measurable overfitting penalty, because the grid is nearly
+   flat: informed-pattern flow passes any sane thresholds, and the catalyst
+   window is the only filter that moves alert counts materially. The real
+   lesson: per-year ROI on an *identical* process swings ~-80% to +120%
+   (12 events/yr, payoffs dominated by 1-2 big jumps), so any single-period
+   ROI figure (incl. the +33% from the original sweep) is noise. Judge configs
+   on multi-period aggregates only.
 
 ## Repo layout
 - `src/flow_backtest.py` — core framework, fully working:
@@ -35,6 +45,9 @@ context so any Claude Code session starts fully briefed.
   - `generate_synthetic_market()` — demo data incl. earnings-spec noise and
     no-event rumor bursts (both are essential; do not remove them)
   - `sweep_thresholds()` — config grid → precision/recall/ROI table
+- `src/walk_forward.py` — Priority #1 done: chronological tune/test split with
+  boundary embargo, grid tuning on period A only, frozen scoring on period B,
+  multi-seed aggregation
 - `notebooks/flow_signal_backtest.ipynb` — Colab-ready version of the same,
   with real-data upload cells. Keep in sync with src/ if logic changes.
 - `data/` — real CSVs go here (gitignored). Schemas in README.md.
