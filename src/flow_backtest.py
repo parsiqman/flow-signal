@@ -226,6 +226,7 @@ def generate_synthetic_market(n_tickers: int = 400, n_days: int = 252,
     tickers = [f"TK{i:03d}" for i in range(n_tickers)]
     dates = pd.bdate_range("2025-01-02", periods=n_days)
     spot = {t: rng.uniform(15, 300) for t in tickers}
+    years = n_days / 252  # keep per-year densities constant for multi-year runs
 
     rows = []
 
@@ -274,7 +275,7 @@ def generate_synthetic_market(n_tickers: int = 400, n_days: int = 252,
     # aggressive call speculation in the 1-5 days prior (lookalike noise)
     cat_rows = []
     for t in tickers:
-        for _ in range(2):
+        for _ in range(max(1, round(2 * years))):
             ed = dates[int(rng.integers(20, n_days - 1))]
             cat_rows.append(dict(ticker=t, date=ed))
             if rng.random() < 0.35:  # 35% of earnings attract heavy spec flow
@@ -289,7 +290,7 @@ def generate_synthetic_market(n_tickers: int = 400, n_days: int = 252,
     # with NO catalyst and NO subsequent deal. This is the tape's dirty secret:
     # takeover chatter, momentum chasing, and unseeable spread legs generate
     # suspicious-looking sweeps constantly. This is what caps real precision.
-    n_rumor_bursts = int(n_tickers * 0.35)
+    n_rumor_bursts = int(n_tickers * 0.35 * years)
     for _ in range(n_rumor_bursts):
         t = tickers[int(rng.integers(0, n_tickers))]
         d0 = dates[int(rng.integers(5, n_days - 5))]

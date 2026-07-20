@@ -7,6 +7,7 @@ See `CLAUDE.md` for full project context and priorities.
 ```bash
 pip install -r requirements.txt
 python src/flow_backtest.py        # runs synthetic demo + threshold sweep
+python src/walk_forward.py         # walk-forward validation, 10 seeds (~2 min)
 ```
 Or open `notebooks/flow_signal_backtest.ipynb` in Colab (zero install).
 
