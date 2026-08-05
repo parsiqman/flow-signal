@@ -1,29 +1,40 @@
-# Flow Signal — trading algo research
+# Options Trading Algo — research repo
 
-Two things live here:
+**Current work: a defined-risk variance risk premium harvest.** Sell volatility
+across ~60 liquid underlyings, cap every position with bought wings, hold to
+expiry. Validated on synthetic data only — see **[STRATEGY.md](STRATEGY.md)**.
 
-1. **Market selection** (`src/market_selection/`) — which market to build a
-   trading algo in. Answered: **US cash equities**, cross-sectional, 1–3 day
-   horizon. Crypto and DeFi lose on statistical power, not on fees. Full
-   reasoning and sources in **[DECISION.md](DECISION.md)**.
-2. **Unusual options flow → M&A** (`src/flow_backtest.py`) — the original
-   thesis: is pre-announcement informed options flow detectable and tradeable?
-   Parked, not deleted: it has the highest per-bet edge of any venue evaluated
-   but no free historical data to validate against. See `CLAUDE.md`.
+Synthetic results: +12.3% CAGR out-of-sample, −7.5% max drawdown, profitable in
+14 of 14 independently generated markets, survives 2008-scale shocks. The
+Sharpe of ~2.5 is **not believable** and is discounted accordingly; nothing here
+has touched a real option chain yet.
 
 ## Quick start
 ```bash
 pip install -r requirements.txt
 
-python src/market_selection/run_analysis.py   # the market decision, end to end
-python tests/test_market_selection.py         # 20 tests on the decision model
-python src/flow_backtest.py                   # synthetic demo + threshold sweep
+python src/options_alpha/run.py --quick    # the whole chain, ~70s
+python tests/test_options_alpha.py         # 23 tests
 ```
-Or open `notebooks/flow_signal_backtest.ipynb` in Colab (zero install).
 
-To disagree with the market decision, edit the parameter table in
-`src/market_selection/venues.py` and re-run — every number that drives the
-conclusion is in that one file.
+## What's here
+| Path | What |
+|---|---|
+| [STRATEGY.md](STRATEGY.md) | The strategy, results, the bugs, next steps. **Start here.** |
+| [DECISION.md](DECISION.md) | Why equities over crypto/DeFi. Settled, still valid. |
+| `src/options_alpha/` | The strategy: families, generator, backtest, research harness |
+| `src/market_selection/` | The venue model behind DECISION.md |
+| `docs/ARCHIVE-ma-flow-thesis.md` | Superseded M&A options-flow project (`src/flow_backtest.py`) |
+
+## One thing worth knowing before touching this
+A backtest is only as trustworthy as the market it runs in, and a broken market
+fails **silently**. During development, a generator bug made implied vol sit
+*below* true realised vol — so frictionless option selling lost money and every
+strategy result was measuring my parameters rather than the strategy. Nothing
+crashed; the backtest just confidently reported a loss.
+
+`run.py` therefore validates the market before any strategy runs on it, and
+aborts if frictionless straddle selling isn't profitable. Keep that guard.
 
 ## Real data schemas (put CSVs in data/)
 
