@@ -1,14 +1,29 @@
-# Flow Signal — Unusual Options Flow → M&A Backtest
+# Flow Signal — trading algo research
 
-Tests whether pre-announcement informed options flow is detectable and tradeable.
-See `CLAUDE.md` for full project context and priorities.
+Two things live here:
+
+1. **Market selection** (`src/market_selection/`) — which market to build a
+   trading algo in. Answered: **US cash equities**, cross-sectional, 1–3 day
+   horizon. Crypto and DeFi lose on statistical power, not on fees. Full
+   reasoning and sources in **[DECISION.md](DECISION.md)**.
+2. **Unusual options flow → M&A** (`src/flow_backtest.py`) — the original
+   thesis: is pre-announcement informed options flow detectable and tradeable?
+   Parked, not deleted: it has the highest per-bet edge of any venue evaluated
+   but no free historical data to validate against. See `CLAUDE.md`.
 
 ## Quick start
 ```bash
 pip install -r requirements.txt
-python src/flow_backtest.py        # runs synthetic demo + threshold sweep
+
+python src/market_selection/run_analysis.py   # the market decision, end to end
+python tests/test_market_selection.py         # 20 tests on the decision model
+python src/flow_backtest.py                   # synthetic demo + threshold sweep
 ```
 Or open `notebooks/flow_signal_backtest.ipynb` in Colab (zero install).
+
+To disagree with the market decision, edit the parameter table in
+`src/market_selection/venues.py` and re-run — every number that drives the
+conclusion is in that one file.
 
 ## Real data schemas (put CSVs in data/)
 
