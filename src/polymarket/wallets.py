@@ -408,6 +408,105 @@ def persistence_test(trades: pd.DataFrame, split_ts: float | None = None,
     }
 
 
+def score_by_category(trades: pd.DataFrame, min_trades: int = 15,
+                      min_markets: int = 8,
+                      quantile: float = 0.95) -> pd.DataFrame:
+    """
+    Score every wallet SEPARATELY within each category, with a luck bar sized to
+    that category's own population.
+
+    This is the fix for the failure the first live scans exposed. A specialist --
+    someone with genuine forecasting skill in weather, say, where better models
+    than the market consensus are a real and legal edge -- is invisible to a
+    uniform scan. They trade one domain, so a sample spread across all of
+    Polymarket catches them in one or two markets and the market-count filter
+    then discards them.
+
+    Scoring within category fixes both halves of that:
+
+      - a specialist now has enough markets IN THEIR DOMAIN to be judged, and
+      - the multiple-testing penalty falls, because the population being
+        searched is the few hundred wallets active in that category rather than
+        the tens of thousands active anywhere.
+
+    Requires a `category` column on `trades`. The returned `focus` is the share
+    of a wallet's fills that sit in the scored category, measured from its own
+    trades -- so a claimed specialist can be checked rather than believed.
+    """
+    if "category" not in trades.columns:
+        raise ValueError(
+            "score_by_category needs a `category` column on trades. Label "
+            "markets with client.label_categories() and join it on first.")
+
+    totals = trades.groupby("wallet").size()
+    out = []
+    for cat, g in trades.groupby("category", sort=False):
+        scored = score_wallets(g, min_trades=min_trades, min_markets=min_markets)
+        if scored.empty:
+            continue
+        n_pop = int(g["wallet"].nunique())
+        scored = scored.assign(
+            category=cat,
+            n_wallets_in_category=n_pop,
+            t_needed=luck_threshold_t(n_pop, quantile),
+            focus=scored["wallet"].map(
+                lambda w: float(scored.loc[scored.wallet == w, "n_trades"].iloc[0]
+                                / max(int(totals.get(w, 1)), 1))),
+        )
+        scored["clears_luck"] = scored["t_stat"] > scored["t_needed"]
+        out.append(scored)
+
+    if not out:
+        return pd.DataFrame()
+    return (pd.concat(out, ignore_index=True)
+            .sort_values("t_stat", ascending=False).reset_index(drop=True))
+
+
+def concentrated_edge_candidates(trades: pd.DataFrame,
+                                 min_markets: int = 3,
+                                 min_edge: float = 0.15) -> pd.DataFrame:
+    """
+    Wallets with a large edge over FEW markets -- the shape informed trading takes.
+
+    The 10-market minimum elsewhere exists to stop a single lucky market looking
+    like skill, and it is right for evaluating a trader you might follow
+    indefinitely. But it also excludes the insider case by construction: someone
+    who knows an outcome trades a handful of markets with an enormous edge.
+
+    These two are genuinely indistinguishable from P&L alone, and this function
+    does not pretend otherwise -- it SURFACES them for inspection rather than
+    scoring them. What separates the cases is evidence P&L cannot carry: whether
+    the wins are on separate, unrelated events; whether entries cluster
+    immediately before resolution; whether position size jumps relative to the
+    wallet's own history. `n_markets` and `won_all` are reported so that
+    judgement can be made, not automated.
+    """
+    t = normalise_trades(trades)
+    t = t[t["eff_outcome"].notna()]
+    if t.empty:
+        return pd.DataFrame()
+    t["_edge"] = t["eff_outcome"] - t["eff_price"]
+    t["_we"] = t["size"] * t["_edge"]
+
+    g = t.groupby("wallet")
+    agg = pd.DataFrame({
+        "n_trades": g.size(),
+        "n_markets": g["market_id"].nunique(),
+        "stake": g["stake"].sum(),
+        "profit": g["profit"].sum(),
+        "edge_per_share": g["_we"].sum() / g["size"].sum(),
+    }).reset_index()
+    won = (t.groupby(["wallet", "market_id"])["_edge"].mean() > 0).groupby(
+        "wallet").mean().rename("markets_won_frac").reset_index()
+    agg = agg.merge(won, on="wallet", how="left")
+    agg["roi"] = agg["profit"] / agg["stake"].replace(0, np.nan)
+
+    hits = agg[(agg["n_markets"] >= min_markets)
+               & (agg["n_markets"] < 10)
+               & (agg["edge_per_share"] >= min_edge)]
+    return hits.sort_values("edge_per_share", ascending=False).reset_index(drop=True)
+
+
 def bias_attribution(trades: pd.DataFrame, wallet: str) -> dict:
     """
     Is this wallet skilled, or just fading longshots?

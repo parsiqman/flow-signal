@@ -26,6 +26,18 @@ on:
         description: "Sampling seed (change it to draw a different sample)"
         required: false
         default: "0"
+      stratified:
+        description: "Sample within categories, to find specialists (true/false)"
+        required: false
+        default: "true"
+      per_category:
+        description: "Markets to sample per category"
+        required: false
+        default: "120"
+      categories:
+        description: "Comma-separated subset, e.g. weather,econ (blank = all)"
+        required: false
+        default: ""
   schedule:
     # Sundays 06:00 UTC. Cheap, and the population grows over time.
     - cron: "0 6 * * 0"
@@ -68,7 +80,14 @@ jobs:
         id: scan
         continue-on-error: true    # a failed scan must still publish its report
         run: |
-          python scripts/polymarket_scan.py \
+          EXTRA=""
+          if [ "${{ github.event.inputs.stratified || 'true' }}" = "true" ]; then
+            EXTRA="--stratified --per-category ${{ github.event.inputs.per_category || 120 }}"
+            if [ -n "${{ github.event.inputs.categories }}" ]; then
+              EXTRA="$EXTRA --categories ${{ github.event.inputs.categories }}"
+            fi
+          fi
+          python scripts/polymarket_scan.py $EXTRA \
             --markets "${{ github.event.inputs.markets || 200 }}" \
             --min-volume "${{ github.event.inputs.min_volume || 5000 }}" \
             --min-trades "${{ github.event.inputs.min_trades || 20 }}" \

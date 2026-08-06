@@ -79,9 +79,22 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     section("2. DISCOVERING WALLETS BY MARKET PARTICIPATION")
     log("NOT from the leaderboard: that selects on the outcome variable and")
     log("would make every number downstream meaningless.\n")
-    raw, meta = client.discover_population(api, resolved,
-                                           n_markets=args.markets,
-                                           seed=args.seed)
+    if args.stratified:
+        log("STRATIFIED by category. A specialist -- someone with genuine")
+        log("forecasting skill in one domain -- trades almost only in that")
+        log("domain, so a uniform sample catches them once and the market-count")
+        log("filter then discards them. Concentrating the sample fixes that,")
+        log("and shrinks the multiple-testing penalty at the same time.\n")
+        resolved = client.label_categories(resolved)
+        log(resolved["category"].value_counts().to_string())
+        log("")
+        raw, meta = client.discover_stratified(
+            api, resolved, per_category=args.per_category, seed=args.seed,
+            categories=args.categories.split(",") if args.categories else None)
+    else:
+        raw, meta = client.discover_population(api, resolved,
+                                               n_markets=args.markets,
+                                               seed=args.seed)
     for k, v in meta.items():
         log(f"  {k:24} {v:,}" if isinstance(v, int) else f"  {k:24} {v}")
     if raw.empty:
@@ -105,8 +118,18 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     if full_raw.empty:
         log("full-history fetch returned nothing; falling back to the sample")
         trades, meta["n_wallets_discovered"] = seed_trades, len(candidates)
+        if "category" in resolved.columns:
+            trades = trades.merge(
+                resolved[["market_id", "category"]].drop_duplicates(),
+                on="market_id", how="left")
+            trades["category"] = trades["category"].fillna("other")
     else:
         trades = client.normalise_trades(full_raw, resolved)
+        if "category" in resolved.columns:
+            trades = trades.merge(
+                resolved[["market_id", "category"]].drop_duplicates(),
+                on="market_id", how="left")
+            trades["category"] = trades["category"].fillna("other")
         # N for the luck correction is the number of wallets whose PERFORMANCE
         # was examined, not the number discovered.
         meta["n_wallets_discovered"] = fmeta["n_wallets_examined"]
@@ -155,6 +178,43 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
         pers = {"verdict": f"persistence test failed: {e}"}
     for k, v in pers.items():
         log(f"  {k:26} {v}")
+
+    section("5b. PER-CATEGORY SCORING (finds specialists a uniform scan misses)")
+    by_cat = pd.DataFrame()
+    if "category" in trades.columns:
+        try:
+            by_cat = wallets.score_by_category(
+                trades, min_trades=max(10, args.min_trades // 2),
+                min_markets=max(5, args.min_markets // 2))
+        except Exception as e:                               # noqa: BLE001
+            log(f"  per-category scoring failed: {e}")
+    if len(by_cat):
+        log(f"{len(by_cat)} wallet-category pairs scored")
+        cc = ["wallet", "category", "n_trades", "n_markets", "edge_per_share",
+              "t_stat", "t_needed", "focus", "clears_luck"]
+        log(by_cat.head(15)[cc].to_string(index=False))
+        n_cat_clear = int(by_cat["clears_luck"].sum())
+        log(f"\n>>> wallet-category pairs clearing their category bar: {n_cat_clear}")
+        if n_cat_clear:
+            log("\nSPECIALISTS (focus >= 0.6 means most of their activity is here):")
+            log(by_cat[by_cat["clears_luck"]][cc].to_string(index=False))
+    else:
+        log("  no category data or too few wallets per category")
+
+    section("5c. CONCENTRATED EDGE (the shape informed trading takes)")
+    log("Large edge over FEW markets. The 10-market minimum elsewhere excludes")
+    log("this by construction, and from P&L alone it is indistinguishable from")
+    log("luck -- so these are SURFACED for inspection, not scored.\n")
+    conc = pd.DataFrame()
+    try:
+        conc = wallets.concentrated_edge_candidates(trades)
+    except Exception as e:                                   # noqa: BLE001
+        log(f"  failed: {e}")
+    if len(conc):
+        log(f"{len(conc)} wallets with >=15c edge over 3-9 markets")
+        log(conc.head(20).to_string(index=False))
+    else:
+        log("  none found")
 
     section("6. BIAS ATTRIBUTION for the top wallets")
     bias = []
@@ -210,7 +270,11 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
         "persistence": pers,
         "bias": bias,
         "economics": econ,
+        "n_category_clearing": int(by_cat["clears_luck"].sum()) if len(by_cat) else 0,
+        "n_concentrated": int(len(conc)),
         "ranked": ranked,
+        "by_category": by_cat,
+        "concentrated": conc,
     }
 
 
@@ -221,6 +285,11 @@ def write_report(report: dict, meta: dict, args, out: Path) -> None:
     ranked = report.pop("ranked", None)
     if ranked is not None and len(ranked):
         ranked.head(500).to_csv(out / "wallet_scores.csv", index=False)
+    for key, fname in (("by_category", "category_scores.csv"),
+                       ("concentrated", "concentrated_edge.csv")):
+        tbl = report.pop(key, None)
+        if tbl is not None and len(tbl):
+            tbl.head(500).to_csv(out / fname, index=False)
 
     payload = {"generated_at": stamp, "args": vars(args), "meta": meta,
                **{k: v for k, v in report.items()}}
@@ -240,7 +309,9 @@ def write_report(report: dict, meta: dict, args, out: Path) -> None:
         f"| t-stat needed to clear luck | {report.get('t_needed')} |",
         f"| best t observed | {report.get('best_t')} |",
         f"| best edge observed | {report.get('best_edge_cents')} c/share |",
-        f"| **wallets clearing the bar** | **{report.get('n_clearing_luck', 0)}** |",
+        f"| **wallets clearing the bar (uniform)** | **{report.get('n_clearing_luck', 0)}** |",
+        f"| **wallet-category pairs clearing (specialists)** | **{report.get('n_category_clearing', 0)}** |",
+        f"| concentrated-edge wallets surfaced | {report.get('n_concentrated', 0)} |",
         "",
         "## Persistence (the decisive test)",
         "",
@@ -272,6 +343,11 @@ def main() -> int:
                     help="distinct resolved markets required to judge a wallet")
     ap.add_argument("--max-wallets", type=int, default=400,
                     help="wallets to pull full history for; the honest N")
+    ap.add_argument("--stratified", action="store_true",
+                    help="sample markets within categories, to find specialists")
+    ap.add_argument("--per-category", type=int, default=120)
+    ap.add_argument("--categories", default="",
+                    help="comma-separated subset, e.g. weather,econ")
     ap.add_argument("--top-frac", type=float, default=0.10)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--rate-limit", type=float, default=0.25)
