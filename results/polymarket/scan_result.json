@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06 23:16 UTC",
+  "generated_at": "2026-08-06 23:28 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -31,7 +31,26 @@
     "match_note": "scored only on fills matched to resolved markets"
   },
   "market_pool": {},
-  "verdict": "no wallet had enough resolved trades to score",
+  "verdict": "NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.",
   "n_wallets_scanned": 1,
-  "n_scored": 0
+  "n_scored": 1,
+  "t_needed": 1.64,
+  "best_t": 1.4,
+  "best_edge_cents": 7.93,
+  "n_clearing_luck": 0,
+  "persistence": {
+    "verdict": "too few wallets active in both periods",
+    "n_selected": 0
+  },
+  "bias": [
+    {
+      "wallet": "0x6011655c4afb76f36dd1b08a137a1ba73466b31e",
+      "overall_edge": 0.0793,
+      "extreme_band_stake": 0.494,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    }
+  ],
+  "economics": null,
+  "n_category_clearing": 0,
+  "n_concentrated": 0
 }
