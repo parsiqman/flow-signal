@@ -379,6 +379,74 @@ def test_persistence_split_defaults_to_resolution_time():
         assert "lookahead" in str(e)
 
 
+# --- market clustering (found by the first live run) -------------------------
+
+def test_many_fills_in_one_market_is_one_bet_not_many():
+    """
+    A market resolves ONCE, so every fill a wallet makes in it shares a single
+    outcome. Counting 42 fills as 42 observations inflates the t-statistic by
+    sqrt(42).
+
+    This is not hypothetical. The first live scan reported a t-statistic of 124
+    and a 54c/share edge, and 7 of the 11 wallets that "cleared" the luck bar
+    had two or fewer distinct markets between them. Synthetic fixtures never
+    caught it because they spread each wallet's trades evenly over hundreds of
+    markets; real traders pile into a handful.
+    """
+    n = 42
+    df = pd.DataFrame({
+        "wallet": ["w"] * n, "market_id": [1] * n,
+        "timestamp": np.arange(n, dtype=float), "price": [0.4] * n,
+        "size": [100.0] * n, "side": ["BUY"] * n, "outcome": [1.0] * n,
+        "resolved_at": [9e8] * n})
+    assert len(wallets.score_wallets(df, min_trades=20, min_markets=10)) == 0
+
+
+def test_the_same_wallet_across_many_markets_is_evaluable():
+    """The companion check: a filter that rejects everything is not a filter."""
+    m = 20
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "wallet": ["w"] * m, "market_id": range(m),
+        "timestamp": np.arange(m, dtype=float), "price": [0.4] * m,
+        "size": [100.0] * m, "side": ["BUY"] * m,
+        "outcome": rng.integers(0, 2, m).astype(float), "resolved_at": [9e8] * m})
+    scored = wallets.score_wallets(df, min_trades=10, min_markets=10)
+    assert len(scored) == 1
+    assert scored["n_markets"].iloc[0] == m
+
+
+def test_variance_floor_stops_absurd_t_statistics():
+    """
+    A wallet whose market-level edges happen to be near-identical produces a
+    vanishing standard error and an astronomical t from no real information.
+    The live run's worst case was t=124.5 on an edge of 0.001.
+    """
+    m = 15
+    df = pd.DataFrame({
+        "wallet": ["w"] * m, "market_id": range(m),
+        "timestamp": np.arange(m, dtype=float), "price": [0.5] * m,
+        "size": [100.0] * m, "side": ["BUY"] * m,
+        "outcome": [1.0] * m,                    # identical every time
+        "resolved_at": [9e8] * m})
+    scored = wallets.score_wallets(df, min_trades=10, min_markets=10)
+    assert len(scored) == 1
+    assert abs(float(scored["t_stat"].iloc[0])) < 30, scored["t_stat"].iloc[0]
+
+
+def test_full_history_selection_is_by_activity_not_profit():
+    """
+    Narrowing candidates before fetching full histories must use an
+    outcome-INDEPENDENT criterion, or it becomes leaderboard seeding wearing a
+    different hat.
+    """
+    import inspect
+    src = inspect.getsource(client.fetch_full_histories)
+    assert "activity" in src
+    for banned in ("profit", "edge_per_share", "roi", "pnl"):
+        assert f"-{banned}" not in src and f'"{banned}"' not in src, banned
+
+
 if __name__ == "__main__":
     fns = [f for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0
