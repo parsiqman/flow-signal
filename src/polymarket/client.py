@@ -41,6 +41,10 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+class PaginationLimit(RuntimeError):
+    """The API refused a page: end of available data, not a failure."""
+
+
 GAMMA = "https://gamma-api.polymarket.com"
 DATA = "https://data-api.polymarket.com"
 
@@ -147,6 +151,7 @@ class PolymarketClient:
         if cp and cp.exists():
             return json.loads(cp.read_text())
 
+        import urllib.error
         import urllib.parse
         import urllib.request
 
@@ -166,6 +171,17 @@ class PolymarketClient:
                 if cp:
                     cp.write_text(json.dumps(payload))
                 return payload
+            except urllib.error.HTTPError as e:
+                # A 4xx is the server saying the request itself is wrong, so
+                # retrying it four times only wastes the rate limit and then
+                # crashes anyway. Gamma answers 422 past its pagination ceiling,
+                # which is a normal end-of-data signal rather than a fault --
+                # it took down a whole run before this distinction existed.
+                if 400 <= e.code < 500 and e.code != 429:
+                    raise PaginationLimit(
+                        f"{e.code} on {full}; treating as end of data") from e
+                last_err = e
+                time.sleep(2 ** attempt)
             except Exception as e:                      # noqa: BLE001
                 last_err = e
                 time.sleep(2 ** attempt)
@@ -188,9 +204,12 @@ class PolymarketClient:
         # outcome, so the resolved pool is a small fraction of what is fetched.
         hard_cap = max(limit * 8, 8000)
         while len(rows) < hard_cap:
-            batch = self._get(f"{GAMMA}/markets", {
-                "closed": "true", "limit": self.cfg.page_size, "offset": offset,
-                "order": "endDate", "ascending": "false"})
+            try:
+                batch = self._get(f"{GAMMA}/markets", {
+                    "closed": "true", "limit": self.cfg.page_size,
+                    "offset": offset, "order": "endDate", "ascending": "false"})
+            except PaginationLimit:
+                break            # hit the API's offset ceiling; use what we have
             if not batch:
                 empty_pages += 1
                 if empty_pages >= 2:
@@ -208,13 +227,16 @@ class PolymarketClient:
         out.attrs["n_after_volume"] = len(df)
         return out
 
-    def market_trades(self, market_id: str, limit: int = 5000) -> list[dict]:
-        """Every trade in one market. This is the unbiased discovery unit."""
+    def _paged_trades(self, params: dict, limit: int) -> list[dict]:
+        """Page a /trades query, stopping cleanly at the API's own ceiling."""
         out, offset = [], 0
         while len(out) < limit:
-            batch = self._get(f"{DATA}/trades", {
-                "market": market_id, "limit": self.cfg.page_size,
-                "offset": offset, "takerOnly": "false"})
+            try:
+                batch = self._get(f"{DATA}/trades",
+                                  {**params, "limit": self.cfg.page_size,
+                                   "offset": offset, "takerOnly": "false"})
+            except PaginationLimit:
+                break
             if not batch:
                 break
             out.extend(batch)
@@ -223,20 +245,13 @@ class PolymarketClient:
                 break
         return out[:limit]
 
+    def market_trades(self, market_id: str, limit: int = 5000) -> list[dict]:
+        """Every trade in one market. This is the unbiased discovery unit."""
+        return self._paged_trades({"market": market_id}, limit)
+
     def user_trades(self, wallet: str, limit: int = 5000) -> list[dict]:
         """Full history for one wallet, across all markets."""
-        out, offset = [], 0
-        while len(out) < limit:
-            batch = self._get(f"{DATA}/trades", {
-                "user": wallet, "limit": self.cfg.page_size, "offset": offset,
-                "takerOnly": "false"})
-            if not batch:
-                break
-            out.extend(batch)
-            offset += self.cfg.page_size
-            if len(batch) < self.cfg.page_size:
-                break
-        return out[:limit]
+        return self._paged_trades({"user": wallet}, limit)
 
 
 # ---------------------------------------------------------------------------
