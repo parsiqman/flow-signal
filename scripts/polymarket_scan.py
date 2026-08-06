@@ -35,6 +35,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from polymarket import client, execution, fixtures, wallets   # noqa: E402
 
 
+# Stage-by-stage market-pool counts. Logs are not retrievable from a finished
+# CI run, so anything needed to diagnose a thin pool has to reach the report.
+POOL_DIAG: dict = {}
+
+
 def log(msg: str = "") -> None:
     print(msg, flush=True)
 
@@ -59,6 +64,9 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
                         "mode": "offline",
                         "n_truly_skilled": int(truth.is_skilled.sum())}
 
+    if args.wallets:
+        return collect_named_wallets(args)
+
     section("1. FETCHING RESOLVED MARKETS")
     cfg = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
     api = client.PolymarketClient(cfg)
@@ -77,6 +85,13 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     log(f"  sample outcomePrices     : {a.get('outcome_price_samples', [])}")
     resolved = markets[markets["winning_index"].notna()]
     log(f"{len(resolved):,} have a determinable winning outcome")
+    POOL_DIAG.update({
+        "raw_markets_fetched": a.get("n_raw"),
+        "with_winning_outcome": a.get("n_with_winner"),
+        "after_volume_filter": a.get("n_after_volume"),
+        "resolved_pool": len(resolved),
+        "outcome_price_samples": a.get("outcome_price_samples", []),
+    })
     if len(resolved) < 50:
         log("\n  WARNING: the resolved pool is very thin. Every downstream")
         log("  number is starved by this, not by the wallets. Check the")
@@ -96,7 +111,9 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         log("filter then discards them. Concentrating the sample fixes that,")
         log("and shrinks the multiple-testing penalty at the same time.\n")
         resolved = client.label_categories(resolved)
-        log(resolved["category"].value_counts().to_string())
+        counts = resolved["category"].value_counts()
+        log(counts.to_string())
+        POOL_DIAG["category_pool"] = counts.to_dict()
         log("")
         raw, meta = client.discover_stratified(
             api, resolved, per_category=args.per_category, seed=args.seed,
@@ -152,6 +169,65 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     return trades, meta
 
 
+def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
+    """
+    Evaluate specific addresses someone has pointed at, rather than searching.
+
+    The multiple-testing penalty is different here and it matters. When you scan
+    10,000 wallets and keep the best, the bar is what the luckiest of 10,000
+    produces by chance. When someone names an address for reasons outside this
+    dataset -- a tracker, a news story, a domain reputation -- you are testing a
+    pre-specified hypothesis and the bar is far lower.
+
+    But not N=1 either, and pretending otherwise is the trap. Whoever surfaced
+    that wallet found it by searching too; you have inherited their selection
+    without inheriting its size. So the report gives BOTH bars: N=1 for a
+    genuinely pre-specified test, and N=1000 as a stand-in for the search that
+    plausibly produced the recommendation. An edge that clears only the first is
+    consistent with having been handed somebody else's lucky draw.
+    """
+    section("1. NAMED-WALLET MODE")
+    addrs = [w.strip().lower() for w in args.wallets.split(",") if w.strip()]
+    log(f"evaluating {len(addrs)} named wallet(s):")
+    for a in addrs:
+        log(f"  {a}")
+
+    cfg = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
+    api = client.PolymarketClient(cfg)
+
+    markets = api.resolved_markets(limit=args.market_pool,
+                                   min_volume=0.0)
+    resolved = markets[markets["winning_index"].notna()]
+    log(f"\n{len(resolved):,} resolved markets available to match trades against")
+    if resolved.empty:
+        raise RuntimeError("no resolved markets; cannot score anything")
+    resolved = client.label_categories(resolved)
+
+    frames = []
+    for a in addrs:
+        raw = api.user_trades(a, limit=20_000)
+        log(f"  {a[:12]}... {len(raw):,} raw fills")
+        if raw:
+            frames.append(pd.DataFrame(raw))
+    if not frames:
+        raise RuntimeError("no trades returned for any named wallet")
+
+    trades = client.normalise_trades(pd.concat(frames, ignore_index=True),
+                                     resolved)
+    trades = trades.merge(resolved[["market_id", "category"]].drop_duplicates(),
+                          on="market_id", how="left")
+    trades["category"] = trades["category"].fillna("other")
+    log(f"\n{len(trades):,} fills matched to resolved markets")
+    if len(trades):
+        log(f"distinct markets: {trades['market_id'].nunique():,}")
+        log("\nUnmatched fills are dropped silently by the join, so a low match")
+        log("rate here means the market pool is too shallow to judge this wallet,")
+        log("NOT that the wallet traded little.")
+    return trades, {"n_wallets_discovered": 1, "mode": "named",
+                    "named_wallets": addrs,
+                    "match_note": "scored only on fills matched to resolved markets"}
+
+
 def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
     """Score, gate, and test persistence. Returns the report payload."""
     n_scanned = int(meta.get("n_wallets_discovered", trades.wallet.nunique()))
@@ -169,6 +245,15 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
 
     ranked = wallets.luck_adjusted_ranking(scored, n_wallets_scanned=n_scanned)
     t_needed = float(ranked["t_needed"].iloc[0])
+    if meta.get("mode") == "named":
+        bar_pre = wallets.luck_threshold_t(1, 0.95)
+        bar_inherited = wallets.luck_threshold_t(1000, 0.95)
+        log(f"\n  bar if genuinely pre-specified (N=1)      : {bar_pre:.2f}")
+        log(f"  bar if inheriting someone's search (N=1000): {bar_inherited:.2f}")
+        log("  An edge clearing only the first may just be somebody else's")
+        log("  lucky draw handed to you.")
+        ranked["t_needed_pre_specified"] = bar_pre
+        ranked["t_needed_inherited_search"] = bar_inherited
     log(f"t-statistic needed to clear luck at N={n_scanned:,}: {t_needed:.2f}")
     log(f"best t observed: {ranked['t_stat'].max():.2f}")
     log(f"best edge observed: {ranked['edge_per_share'].max() * 100:.1f}c/share")
@@ -302,6 +387,7 @@ def write_report(report: dict, meta: dict, args, out: Path) -> None:
             tbl.head(500).to_csv(out / fname, index=False)
 
     payload = {"generated_at": stamp, "args": vars(args), "meta": meta,
+               "market_pool": POOL_DIAG,
                **{k: v for k, v in report.items()}}
     (out / "scan_result.json").write_text(
         json.dumps(payload, indent=2, default=str))
@@ -363,6 +449,9 @@ def main() -> int:
     ap.add_argument("--rate-limit", type=float, default=0.25)
     ap.add_argument("--cache", default="/tmp/pm_cache")
     ap.add_argument("--out", default="results/polymarket")
+    ap.add_argument("--wallets", default="",
+                    help="comma-separated addresses to evaluate directly, "
+                         "instead of searching for candidates")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--offline-wallets", type=int, default=1200)
     ap.add_argument("--offline-skilled", type=float, default=0.05)

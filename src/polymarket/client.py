@@ -280,10 +280,14 @@ def discover_by_leaderboard(*args, **kwargs):
 # afterwards rather than trusted from the label.
 CATEGORY_RULES = {
     "weather": ["temperature", "weather", "rain", "snow", "hurricane", "storm",
-                "degrees", "celsius", "fahrenheit", "climate", "tornado"],
+                "degrees", "celsius", "fahrenheit", "climate", "tornado",
+                "high temp", "low temp", "heat", "wildfire", "drought", "flood",
+                "el nino", "la nina", "noaa", "cyclone", "typhoon", "blizzard"],
     "sports": ["nba", "nfl", "mlb", "nhl", "soccer", "football", "basketball",
                "tennis", "ufc", "boxing", "premier league", "champions league",
-               "world cup", "olympics", "golf", "cricket", "baseball"],
+               "world cup", "olympics", "golf", "cricket", "baseball", "f1",
+               "formula 1", "super bowl", "playoffs", "vs.", " vs ", "beat the",
+               "win the game", "match", "series", "grand slam", "heavyweight"],
     "politics": ["election", "president", "senate", "congress", "governor",
                  "parliament", "prime minister", "nominee", "primary", "vote",
                  "cabinet", "impeach", "supreme court"],
@@ -350,7 +354,10 @@ def discover_stratified(client: PolymarketClient, markets: pd.DataFrame,
     """
     rng = np.random.default_rng(seed)
     labelled = label_categories(markets)
-    cats = categories or [c for c in labelled["category"].unique() if c != "other"]
+    # "other" is sampled like any other bucket. Excluding it discarded most of
+    # the pool -- the keyword rules are crude by design, so whatever they fail to
+    # label is not noise, it is the majority of the market universe.
+    cats = categories or list(labelled["category"].unique())
 
     frames, meta_by_cat = [], {}
     for cat in cats:
