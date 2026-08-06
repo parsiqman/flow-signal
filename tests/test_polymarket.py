@@ -521,6 +521,99 @@ def test_concentrated_edge_surfaces_what_the_market_filter_excludes():
     assert "0xNORMAL" not in set(hits["wallet"])
 
 
+# --- lookup by id (the bug that faked a null result) -------------------------
+
+class _IgnoresTheFilter:
+    """
+    A server that answers 200 with its default page whatever you ask for.
+
+    This is not a hypothetical. Gamma does exactly this with an unrecognised
+    query parameter, and it turned a named-wallet run into "no wallet had
+    enough resolved trades to score" -- the most dangerous kind of wrong
+    answer, because it is shaped like a finding.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    def _get(self, url, params):
+        self.calls.append((url, params))
+        return [{"conditionId": f"0xUNRELATED{i}", "question": "Some election",
+                 "outcomePrices": '["1", "0"]', "endDate": "2024-01-01T00:00:00Z"}
+                for i in range(20)]
+
+
+class _HonoursRepeatedParam:
+    """Returns only what was asked for, and only via the repeated-param form."""
+
+    def __init__(self, known):
+        self.known = known
+        self.forms_tried = []
+
+    def _get(self, url, params):
+        cid = params.get("condition_ids")
+        self.forms_tried.append(type(cid).__name__)
+        if not isinstance(cid, list):
+            return [{"conditionId": "0xNOISE", "question": "Some election",
+                     "outcomePrices": '["1", "0"]'}]
+        return [{"conditionId": c, "question": self.known[c],
+                 "outcomePrices": '["1", "0"]',
+                 "endDate": "2024-01-01T00:00:00Z"}
+                for c in cid if c in self.known]
+
+
+def test_lookup_rejects_markets_it_did_not_ask_for():
+    """A 200 with the wrong markets must not count as a successful lookup."""
+    fake = _IgnoresTheFilter()
+    out = client.markets_by_condition_ids(fake, ["0xWEATHER1", "0xWEATHER2"])
+    assert out.empty, out
+    # ...and it must have fallen through to the per-id path rather than
+    # accepting the junk.
+    assert out.attrs["lookup_form"] == "clob per-id"
+    assert any("/markets/0xWEATHER1" in u for u, _ in fake.calls)
+
+
+def test_lookup_finds_the_form_that_actually_filters():
+    known = {"0xW1": "Highest temperature in NYC on Jan 5?",
+             "0xW2": "Highest temperature in Chicago on Jan 6?"}
+    fake = _HonoursRepeatedParam(known)
+    out = client.markets_by_condition_ids(fake, list(known), batch=2)
+    assert set(out["market_id"]) == set(known)
+    assert out.attrs["lookup_form"] == "gamma condition_ids[]"
+    assert out["winning_index"].notna().all()
+
+
+def test_repeated_params_are_sent_as_repeated_not_as_a_list_repr():
+    """
+    doseq=True is what makes the array form work at all. Without it urlencode
+    ships `condition_ids=%5B%27a%27...`, which Gamma ignores -- and an ignored
+    filter is the whole bug this guards.
+    """
+    import inspect
+    src = inspect.getsource(client.PolymarketClient._get)
+    assert "doseq=True" in src
+
+
+def test_clob_fallback_maps_the_winner_flag_to_the_gamma_outcome_order():
+    """
+    CLOB reports the winner per token; trades index against Yes-first order.
+    Getting this backwards would score every fill as its own opposite, which
+    reads as a large negative edge rather than as a bug.
+    """
+    class _Clob:
+        def _get(self, url, params):
+            return {"condition_id": "0xW1", "question": "NYC above 90F?",
+                    "market_slug": "nyc-above-90f",
+                    "end_date_iso": "2024-07-01T00:00:00Z",
+                    # deliberately No-first, as CLOB is free to return
+                    "tokens": [{"outcome": "No", "winner": False},
+                               {"outcome": "Yes", "winner": True}]}
+
+    out = client.markets_by_condition_ids(_Clob(), ["0xW1"])
+    assert len(out) == 1
+    assert int(out["winning_index"].iat[0]) == 0      # Yes won, Yes is index 0
+
+
 if __name__ == "__main__":
     fns = [f for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

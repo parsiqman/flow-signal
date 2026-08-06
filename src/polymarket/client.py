@@ -47,6 +47,7 @@ class PaginationLimit(RuntimeError):
 
 GAMMA = "https://gamma-api.polymarket.com"
 DATA = "https://data-api.polymarket.com"
+CLOB = "https://clob.polymarket.com"
 
 # Public API field names, as CANDIDATE LISTS rather than single guesses.
 #
@@ -159,7 +160,10 @@ class PolymarketClient:
         if wait > 0:
             time.sleep(wait)
 
-        full = f"{url}?{urllib.parse.urlencode(params)}"
+        # doseq=True so a list value becomes a repeated parameter
+        # (?id=a&id=b) rather than the urlencoded repr of a Python list.
+        # Gamma's array filters only accept the repeated form.
+        full = f"{url}?{urllib.parse.urlencode(params, doseq=True)}"
         last_err = None
         for attempt in range(self.cfg.max_retries):
             try:
@@ -463,21 +467,128 @@ def markets_by_condition_ids(client: "PolymarketClient",
 
     Fetching by id inverts the dependency: take the markets the wallet actually
     traded, then resolve those. No pool depth required.
+
+    The verification below is the point of this function, not decoration.
+    Gamma ignores query parameters it does not recognise and answers 200 with
+    its DEFAULT listing, so a wrong parameter name looks exactly like a
+    successful lookup. The first attempt at this shipped `condition_ids` as a
+    comma-joined string, and the run came back with 92 batches x the default
+    page of 20 = 1,840 "markets", none of them the wallet's, every one filed
+    under politics for an account that trades weather. Zero fills matched and
+    the report said "not enough resolved trades to score" -- a silent wrong
+    answer dressed as a negative result.
+
+    So: a candidate request form is accepted only if what comes back actually
+    contains ids that were asked for. Nothing is trusted for returning 200.
     """
     ids = [c for c in dict.fromkeys(condition_ids) if isinstance(c, str) and c]
-    rows = []
-    for i in range(0, len(ids), batch):
-        chunk = ids[i:i + batch]
-        for params in ({"condition_ids": ",".join(chunk)},
-                       {"conditionIds": ",".join(chunk)}):
+    if not ids:
+        return _markets_to_frame([])
+    batch = max(1, min(batch, 50))
+
+    def _asked_for(payload: Any, chunk: list[str]) -> list[dict]:
+        """Rows whose condition id is one we requested. Others are noise."""
+        if not isinstance(payload, list):
+            return []
+        want = {c.lower() for c in chunk}
+        keep = []
+        for r in payload:
+            if not isinstance(r, dict):
+                continue
+            cid = r.get("conditionId") or r.get("condition_id") or ""
+            if str(cid).lower() in want:
+                keep.append(r)
+        return keep
+
+    # Candidate request forms, most-likely first. `doseq` in _get turns a list
+    # into the repeated form (?condition_ids=a&condition_ids=b).
+    forms = [
+        ("gamma condition_ids[]", lambda c: {"condition_ids": list(c),
+                                             "limit": len(c)}),
+        ("gamma condition_ids=csv", lambda c: {"condition_ids": ",".join(c),
+                                               "limit": len(c)}),
+        ("gamma conditionIds[]", lambda c: {"conditionIds": list(c),
+                                            "limit": len(c)}),
+    ]
+
+    rows: list[dict] = []
+    chosen = None
+    probe = ids[:batch]
+    for label, build in forms:
+        try:
+            payload = client._get(f"{GAMMA}/markets", build(probe))
+        except Exception:                                    # noqa: BLE001
+            continue
+        hits = _asked_for(payload, probe)
+        if hits:
+            chosen = (label, build)
+            rows.extend(hits)
+            break
+
+    if chosen is not None:
+        label, build = chosen
+        for i in range(batch, len(ids), batch):
+            chunk = ids[i:i + batch]
             try:
-                payload = client._get(f"{GAMMA}/markets", params)
+                payload = client._get(f"{GAMMA}/markets", build(chunk))
             except Exception:                                # noqa: BLE001
                 continue
-            if isinstance(payload, list) and payload:
-                rows.extend(payload)
-                break
-    return _markets_to_frame(rows)
+            rows.extend(_asked_for(payload, chunk))
+    else:
+        label = "clob per-id"
+        rows.extend(_clob_markets(client, ids))
+
+    df = _markets_to_frame(rows)
+    df.attrs["lookup_form"] = label
+    df.attrs["n_requested"] = len(ids)
+    df.attrs["n_matched"] = len(df)
+    return df
+
+
+def _clob_markets(client: "PolymarketClient", ids: list[str]) -> list[dict]:
+    """
+    Fallback: one CLOB request per condition id, reshaped to the Gamma schema.
+
+    Slower than a batch filter -- one round trip per market -- but it cannot
+    return somebody else's market, because the id is in the path rather than in
+    a query parameter the server is free to ignore. Given how the batch path
+    failed, that property is worth the extra requests.
+
+    CLOB reports resolution as a `winner` flag per token rather than as prices,
+    which is also strictly better: no 0.995-rounding judgement call.
+    """
+    out = []
+    for cid in ids:
+        try:
+            m = client._get(f"{CLOB}/markets/{cid}", {})
+        except Exception:                                    # noqa: BLE001
+            continue                    # 404 for an unknown id is not an error
+        if not isinstance(m, dict) or not m.get("condition_id"):
+            continue
+        toks = [t for t in (m.get("tokens") or []) if isinstance(t, dict)]
+        # Trades carry outcomeIndex against Gamma's outcome order, which is
+        # Yes-first on binary markets. Sort to match, and only when the labels
+        # say it is safe to -- reordering a multi-outcome market on a guess
+        # would map every fill to the wrong leg.
+        labels = [str(t.get("outcome", "")).strip().lower() for t in toks]
+        if sorted(labels) == ["no", "yes"]:
+            toks.sort(key=lambda t: str(t.get("outcome", "")).strip().lower() != "yes")
+        prices = None
+        if toks:
+            if any(t.get("winner") for t in toks):
+                prices = ["1" if t.get("winner") else "0" for t in toks]
+            else:
+                prices = [str(t.get("price", "")) for t in toks]
+        out.append({
+            "conditionId": m.get("condition_id"),
+            "question": m.get("question"),
+            "slug": m.get("market_slug"),
+            "endDate": m.get("end_date_iso"),
+            "outcomePrices": prices,
+            "volumeNum": None,
+            "category": m.get("category") or m.get("tags"),
+        })
+    return out
 
 
 def resolve_username(client: "PolymarketClient", name: str) -> list[str]:
