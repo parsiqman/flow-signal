@@ -187,7 +187,26 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
     consistent with having been handed somebody else's lucky draw.
     """
     section("1. NAMED-WALLET MODE")
-    addrs = [w.strip().lower() for w in args.wallets.split(",") if w.strip()]
+    raw_ids = [w.strip() for w in args.wallets.split(",") if w.strip()]
+    cfg0 = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
+    api0 = client.PolymarketClient(cfg0)
+    addrs = []
+    for ident in raw_ids:
+        if ident.startswith("0x") and len(ident) >= 40:
+            addrs.append(ident.lower())
+            continue
+        log(f"resolving username {ident!r}...")
+        found = client.resolve_username(api0, ident)
+        if found:
+            log(f"  -> {found}")
+            addrs.extend(found)
+        else:
+            log(f"  -> NOT RESOLVED. Supply the address from the profile URL "
+                f"(polymarket.com/profile/0x...) instead of the display name.")
+    if not addrs:
+        raise RuntimeError(
+            "no wallet addresses to evaluate. Username lookup failed; pass the "
+            "0x address from the profile URL with --wallets.")
     log(f"evaluating {len(addrs)} named wallet(s):")
     for a in addrs:
         log(f"  {a}")
