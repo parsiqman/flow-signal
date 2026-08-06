@@ -567,9 +567,9 @@ def test_lookup_rejects_markets_it_did_not_ask_for():
     fake = _IgnoresTheFilter()
     out = client.markets_by_condition_ids(fake, ["0xWEATHER1", "0xWEATHER2"])
     assert out.empty, out
+    assert out.attrs["lookup_form"] == "none verified"
     # ...and it must have fallen through to the per-id path rather than
     # accepting the junk.
-    assert out.attrs["lookup_form"] == "clob per-id"
     assert any("/markets/0xWEATHER1" in u for u, _ in fake.calls)
 
 
@@ -592,6 +592,38 @@ def test_repeated_params_are_sent_as_repeated_not_as_a_list_repr():
     import inspect
     src = inspect.getsource(client.PolymarketClient._get)
     assert "doseq=True" in src
+
+
+def test_a_partial_batch_answer_is_topped_up_per_id():
+    """
+    Gamma answered for 13 of 1,831 requested ids -- all from the last two days
+    -- and returned nothing for the rest. Silently scoring the 13 gave a
+    confident verdict off an effective sample of 4.7. A partial answer has to
+    be completed, not accepted.
+    """
+    recent = {f"0xR{i}": "Highest temperature in NYC?" for i in range(3)}
+    old = [f"0xOLD{i}" for i in range(5)]
+
+    class _AnswersOnlyForRecent:
+        def _get(self, url, params):
+            if "/markets/" in url:                       # clob, id in the path
+                cid = url.rsplit("/", 1)[-1]
+                return {"condition_id": cid, "question": "Older weather market",
+                        "end_date_iso": "2024-01-01T00:00:00Z",
+                        "tokens": [{"outcome": "Yes", "winner": True},
+                                   {"outcome": "No", "winner": False}]}
+            asked = params.get("condition_ids") or []
+            return [{"conditionId": c, "question": recent[c],
+                     "outcomePrices": '["1", "0"]',
+                     "endDate": "2024-01-01T00:00:00Z"}
+                    for c in asked if c in recent]
+
+    out = client.markets_by_condition_ids(
+        _AnswersOnlyForRecent(), list(recent) + old, batch=8)
+    assert set(out["market_id"]) == set(recent) | set(old)
+    assert out.attrs["n_from_gamma"] == 3
+    assert out.attrs["n_from_clob"] == 5
+    assert out["winning_index"].notna().all()
 
 
 def test_clob_fallback_maps_the_winner_flag_to_the_gamma_outcome_order():
