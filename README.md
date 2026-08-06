@@ -1,8 +1,23 @@
-# Options Trading Algo — research repo
+# Trading Strategy Research Platform
 
-**Current work: a defined-risk variance risk premium harvest.** Sell volatility
-across ~60 liquid underlyings, cap every position with bought wings, hold to
-expiry. Validated on synthetic data only — see **[STRATEGY.md](STRATEGY.md)**.
+**The deliverable is the machine, not a strategy.** `src/lab/` is infrastructure
+for scouting, testing, validating and iterating on candidates — with
+multiple-testing correction built into the foundation, where it can't be
+skipped. Backtest 100 strategies and keep the best, and you get a beautiful
+Sharpe ratio even if none of them has an edge; the platform computes that luck
+baseline explicitly and makes every candidate clear it.
+
+The first candidate through it is **blocked**: 4 of 5 gates passed, failing
+deflated Sharpe at 0.81 against a 0.95 bar. That is the demonstration.
+
+See **[LAB.md](LAB.md)**.
+
+---
+
+## The first candidate: a defined-risk variance risk premium harvest
+
+Sell volatility across ~60 liquid underlyings, cap every position with bought
+wings, hold to expiry. Synthetic data only — see **[STRATEGY.md](STRATEGY.md)**.
 
 Synthetic results: +12.3% CAGR out-of-sample, −7.5% max drawdown, profitable in
 14 of 14 independently generated markets, survives 2008-scale shocks. The
@@ -13,14 +28,19 @@ has touched a real option chain yet.
 ```bash
 pip install -r requirements.txt
 
-python src/options_alpha/run.py --quick    # the whole chain, ~70s
+python src/lab/run_lab.py                  # the platform, end to end
+python tests/test_lab.py                   # 34 tests
+
+python src/options_alpha/run.py --quick    # the candidate strategy, ~70s
 python tests/test_options_alpha.py         # 23 tests
 ```
 
 ## What's here
 | Path | What |
 |---|---|
-| [STRATEGY.md](STRATEGY.md) | The strategy, results, the bugs, next steps. **Start here.** |
+| [LAB.md](LAB.md) | The research platform. **Start here.** |
+| `src/lab/` | Protocol, registry + trial ledger, validation gauntlet, scout, pipeline |
+| [STRATEGY.md](STRATEGY.md) | The first candidate: results, the bugs, next steps |
 | [DECISION.md](DECISION.md) | Why equities over crypto/DeFi. Settled, still valid. |
 | `src/options_alpha/` | The strategy: families, generator, backtest, research harness |
 | `src/market_selection/` | The venue model behind DECISION.md |

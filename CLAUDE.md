@@ -1,11 +1,14 @@
 # Project: Options Trading Algo — Variance Risk Premium Harvest
 
 ## What this is
-Design, test and build a systematic options strategy. Currently: a defined-risk
-short-volatility book that harvests the variance risk premium across ~60 liquid
-underlyings, validated on synthetic data only.
+A research platform for scouting, testing, validating and iterating on trading
+strategies — plus the first candidate put through it.
 
-Read **STRATEGY.md** first — it is the current state of the work.
+**The platform is the deliverable, not the strategy.** An LLM trained on public
+text is a poor source of proprietary alpha; the useful contribution is making
+sure that when an idea is tested, the answer is trustworthy.
+
+Read **LAB.md** first (the machine), then **STRATEGY.md** (the first candidate).
 
 ## Established (do not re-litigate; build on it)
 
@@ -27,14 +30,27 @@ Read **STRATEGY.md** first — it is the current state of the work.
    shows the regime filter actively costs ~1pp of CAGR. Both are disabled by
    default but retained, pending a retest on real crisis data.
 
-## Results so far (synthetic ONLY — see STRATEGY.md §3)
-Walk-forward OOS: +12.3% CAGR, max drawdown -7.5%. Across 14 fresh markets:
-+11.6% mean CAGR, profitable in 100%. Survives 2008-scale shocks every 2 years.
-**The Sharpe of ~2.5 is not believable** and must be discounted — the synthetic
-tail is too gentle (liquidity never vanishes, spreads never gap, no assignment).
+## Results so far (synthetic ONLY)
+The VRP strategy passes 4 of the platform's 5 gates and is **BLOCKED** at
+`validated` on deflated Sharpe (0.81 vs a 0.95 bar). Its out-of-sample Sharpe
+clears the luck baseline for a 36-config search, but not by enough once the
+negative skew of a short-vol return stream is accounted for.
+
+That is the platform working. Do not "fix" this by loosening the threshold or
+by searching harder — searching harder RAISES the bar it must clear. The two
+legitimate routes are a genuinely better strategy, or more data.
 
 ## Repo layout
-- `STRATEGY.md` — the strategy, results, bugs, and next steps. Start here.
+- `LAB.md` — the research platform. **Start here.**
+- `src/lab/`
+  - `protocol.py` — the interface every candidate implements
+  - `registry.py` — hypothesis pre-registration + automatic trial ledger
+  - `validation.py` — deflated Sharpe, PBO/CSCV, null tests, the gauntlet
+  - `scout.py` — idea catalogue, ordered by why someone loses money to you
+  - `pipeline.py` — promotion stages that cannot be skipped
+  - `run_lab.py` — the machine demonstrated end to end
+- `tests/test_lab.py` — 34 tests, incl. Monte Carlo checks of the statistics
+- `STRATEGY.md` — the first candidate: results, bugs, next steps.
 - `DECISION.md` — why equities over crypto/DeFi (settled, still valid).
 - `src/options_alpha/`
   - `families.py` — why this strategy and not the other six
@@ -50,6 +66,13 @@ tail is too gentle (liquidity never vanishes, spreads never gap, no assignment).
 - `src/flow_backtest.py` — that project's code. Parked, not deleted.
 
 ## Hard rules
+- **The search is the enemy.** Every backtest run raises the bar the winner
+  must clear. Record every run to the TrialLedger, including exploratory ones;
+  an undercounted trial log silently inflates every significance number.
+- **No idea without a named counterparty.** If you cannot say who is on the
+  other side and why they keep taking it, it is a pattern in a dataset.
+- **All gates must pass; never average them.** A weighted score lets a strong
+  return outvote a failed overfitting test. That trade destroys accounts.
 - **Validate the market before trusting any backtest.** A market that does not
   reward vol selling frictionlessly cannot evaluate a vol-selling strategy, and
   that failure is SILENT — it produces a confident, losing, meaningless result.
