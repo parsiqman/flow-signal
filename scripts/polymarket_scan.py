@@ -169,6 +169,67 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     return trades, meta
 
 
+def probe_endpoints(args) -> int:
+    """
+    Hit a list of candidate endpoints and report exactly what each returns.
+
+    Written after three runs were spent guessing which URL carries name-to-
+    address pairs. Guessing costs a five-minute CI round trip per attempt and
+    tells you nothing when it fails; one probe reports every status code and
+    response shape at once. The same principle as the market-pool diagnostics:
+    when the remote shape is unknown, measure it rather than assume it.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    name = args.probe
+    candidates = [
+        ("https://lb-api.polymarket.com/leaderboard",
+         {"window": "all", "limit": 50, "orderBy": "profit"}),
+        ("https://lb-api.polymarket.com/rank", {"window": "all", "limit": 50}),
+        ("https://polymarket.com/api/leaderboard", {"window": "all"}),
+        ("https://polymarket.com/api/profile/search", {"q": name}),
+        ("https://gamma-api.polymarket.com/public-profile", {"name": name}),
+        ("https://gamma-api.polymarket.com/public-search", {"q": name}),
+        ("https://gamma-api.polymarket.com/search", {"q": name}),
+        ("https://data-api.polymarket.com/leaderboard", {"window": "all"}),
+        ("https://data-api.polymarket.com/profile", {"name": name}),
+        ("https://data-api.polymarket.com/traders", {"limit": 25}),
+        ("https://gamma-api.polymarket.com/events", {"limit": 1}),
+    ]
+    section(f"ENDPOINT PROBE for {name!r}")
+    for url, params in candidates:
+        full = f"{url}?{urllib.parse.urlencode(params)}"
+        try:
+            req = urllib.request.Request(
+                full, headers={"User-Agent": "flow-signal-research/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                body = r.read().decode()[:400_000]
+            payload = _json.loads(body)
+            if isinstance(payload, list):
+                shape = f"list[{len(payload)}]"
+                sample = payload[0] if payload else {}
+            else:
+                shape = f"dict keys={sorted(payload)[:10]}"
+                sample = payload
+            keys = sorted(sample)[:18] if isinstance(sample, dict) else str(sample)[:120]
+            log(f"\n  200 {url}")
+            log(f"      params {params}")
+            log(f"      {shape}")
+            log(f"      sample keys: {keys}")
+            if name.lower() in body.lower():
+                log(f"      >>> CONTAINS {name!r} <<<")
+                idx = body.lower().index(name.lower())
+                log(f"      context: ...{body[max(0, idx-260):idx+260]}...")
+        except urllib.error.HTTPError as e:
+            log(f"  {e.code} {url}  params={params}")
+        except Exception as e:                               # noqa: BLE001
+            log(f"  ERR {url}: {type(e).__name__} {e}")
+    return 0
+
+
 def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
     """
     Evaluate specific addresses someone has pointed at, rather than searching.
@@ -471,6 +532,9 @@ def main() -> int:
     ap.add_argument("--wallets", default="",
                     help="comma-separated addresses to evaluate directly, "
                          "instead of searching for candidates")
+    ap.add_argument("--probe", default="",
+                    help="probe candidate endpoints for this username and "
+                         "report what each returns; makes no other calls")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--offline-wallets", type=int, default=1200)
     ap.add_argument("--offline-skilled", type=float, default=0.05)
@@ -478,6 +542,8 @@ def main() -> int:
     args = ap.parse_args()
 
     out = Path(args.out)
+    if args.probe:
+        return probe_endpoints(args)
     try:
         trades, meta = collect(args)
         report = analyse(trades, meta, args)
