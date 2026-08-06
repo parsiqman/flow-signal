@@ -1,20 +1,21 @@
 {
-  "generated_at": "2026-08-06 12:12 UTC",
+  "generated_at": "2026-08-06 22:42 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
-    "min_volume": 2000.0,
+    "min_volume": 1000.0,
     "min_trades": 15,
     "min_markets": 10,
     "max_wallets": 400,
     "stratified": true,
-    "per_category": 150,
+    "per_category": 200,
     "categories": "",
     "top_frac": 0.1,
-    "seed": 1,
+    "seed": 2,
     "rate_limit": 0.25,
     "cache": "/tmp/pm_cache",
     "out": "results/polymarket",
+    "wallets": "",
     "offline": false,
     "offline_wallets": 1200,
     "offline_skilled": 0.05,
@@ -22,20 +23,25 @@
   },
   "meta": {
     "by_category": {
+      "other": {
+        "pool": 282,
+        "sampled": 200,
+        "fetched": 200
+      },
       "sports": {
-        "pool": 9,
-        "sampled": 9,
-        "fetched": 9
+        "pool": 10,
+        "sampled": 10,
+        "fetched": 10
       },
       "crypto": {
-        "pool": 67,
-        "sampled": 67,
-        "fetched": 66
+        "pool": 71,
+        "sampled": 71,
+        "fetched": 71
       },
       "politics": {
-        "pool": 30,
-        "sampled": 30,
-        "fetched": 30
+        "pool": 31,
+        "sampled": 31,
+        "fetched": 31
       },
       "econ": {
         "pool": 8,
@@ -48,58 +54,82 @@
         "fetched": 1
       }
     },
-    "n_raw_trades": 136547,
+    "n_raw_trades": 450531,
     "n_wallets_discovered": 400,
-    "n_candidates": 17034,
-    "n_fetched": 400,
+    "n_candidates": 39908,
+    "n_fetched": 399,
     "n_wallets_examined": 400,
     "fetch_failures": 0,
     "mode": "live"
   },
+  "market_pool": {
+    "raw_markets_fetched": 500,
+    "with_winning_outcome": 500,
+    "after_volume_filter": 403,
+    "resolved_pool": 403,
+    "outcome_price_samples": [
+      "[\"0\", \"1\"]",
+      "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]"
+    ],
+    "category_pool": {
+      "other": 282,
+      "crypto": 71,
+      "politics": 31,
+      "sports": 10,
+      "econ": 8,
+      "entertainment": 1
+    }
+  },
   "verdict": "NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.",
   "n_wallets_scanned": 400,
-  "n_scored": 64,
+  "n_scored": 63,
   "t_needed": 3.7,
-  "best_t": 2.38,
-  "best_edge_cents": 27.0,
+  "best_t": 2.21,
+  "best_edge_cents": 8.68,
   "n_clearing_luck": 0,
   "persistence": {
-    "verdict": "only 2 wallets active in both periods; too few to conclude anything",
-    "n_selected": 2
+    "verdict": "only 3 wallets active in both periods; too few to conclude anything",
+    "n_selected": 3
   },
   "bias": [
-    {
-      "wallet": "0x03ba465926d6f4e451ce1db92dd0150b97f577d6",
-      "overall_edge": 0.27,
-      "extreme_band_stake": 0.049,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
-    {
-      "wallet": "0x78d2ad24aafa9344976a590eebc0fae5a49d7a2b",
-      "overall_edge": 0.2049,
-      "extreme_band_stake": 0.0,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
-    {
-      "wallet": "0x129b59f3fd6a0555307fa15bca4f87809fb024c4",
-      "overall_edge": 0.1003,
-      "extreme_band_stake": 0.37,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
-    {
-      "wallet": "0xde63827b8f8ddd627ad9d7e0b09e8cc49bc446c2",
-      "overall_edge": 0.0992,
-      "extreme_band_stake": 0.37,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
     {
       "wallet": "0x3e27b4fc18d61173110f6edb21e107bc34819890",
       "overall_edge": 0.0868,
       "extreme_band_stake": 0.883,
       "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
+    },
+    {
+      "wallet": "0xeb6789ca6b1425ff908a69a2a5469c38532cd696",
+      "overall_edge": 0.0867,
+      "extreme_band_stake": 0.198,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0xdf0850b029c97de282c491e91ce500384782cf97",
+      "overall_edge": 0.0849,
+      "extreme_band_stake": 0.75,
+      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
+    },
+    {
+      "wallet": "0x15ce9a512f0d4475abb6dba71ae702e2dc1703c5",
+      "overall_edge": 0.0778,
+      "extreme_band_stake": 0.335,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0xa73298dc32dc0728d17fd98d3e19e2ad663c8818",
+      "overall_edge": 0.0664,
+      "extreme_band_stake": 0.659,
+      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
     }
   ],
   "economics": null,
   "n_category_clearing": 0,
-  "n_concentrated": 4
+  "n_concentrated": 1
 }

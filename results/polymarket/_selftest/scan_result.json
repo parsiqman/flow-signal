@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06 11:47 UTC",
+  "generated_at": "2026-08-06 22:27 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -15,6 +15,7 @@
     "rate_limit": 0.25,
     "cache": "/tmp/pm_cache",
     "out": "results/polymarket/_selftest",
+    "wallets": "",
     "offline": true,
     "offline_wallets": 1200,
     "offline_skilled": 0.05,
@@ -25,6 +26,7 @@
     "mode": "offline",
     "n_truly_skilled": 60
   },
+  "market_pool": {},
   "verdict": "MAYBE. 6 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.",
   "n_wallets_scanned": 1200,
   "n_scored": 1200,
