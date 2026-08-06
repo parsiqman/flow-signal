@@ -1,5 +1,16 @@
 # Trading Strategy Research Platform
 
+> **Project closed 2026-08-06.** Wound down after the owner set a >20% annual
+> return bar. The strategy built here is honestly a 6-12% business; clearing 20%
+> would require leverage on a negatively-skewed short-vol book, which is the
+> specific mechanism that destroys accounts. Estimated odds of sustaining >20%
+> as a retail algo trader: 3-5%. Stopping was the right call, and reaching that
+> conclusion cheaply — before spending on data or risking capital — is what the
+> machinery below was built to make possible. See `CLAUDE.md` for the full
+> reasoning. The code works and the tests pass; nothing here ever touched a real
+> option chain.
+
+
 **The deliverable is the machine, not a strategy.** `src/lab/` is infrastructure
 for scouting, testing, validating and iterating on candidates — with
 multiple-testing correction built into the foundation, where it can't be

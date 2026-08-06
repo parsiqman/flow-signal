@@ -1,0 +1,24 @@
+{
+  "vrp-001": {
+    "id": "vrp-001",
+    "title": "Variance risk premium (index and single-name)",
+    "source": "risk_premium",
+    "thesis": "Variance risk premium (index and single-name). Currently implemented. See STRATEGY.md.",
+    "who_pays": "Investors and funds buying downside protection, plus structured-product desks hedging their own books.",
+    "why_they_persist": "Insurance demand is structural and price-insensitive; mandates require hedging regardless of whether it is expensive this month.",
+    "prediction": "Implied volatility exceeds subsequently realised volatility on average, so selling defined-risk option structures earns a positive risk-adjusted return net of costs.",
+    "success_criteria": {
+      "deflated_sharpe": ">= 0.95",
+      "probability_of_overfit": "<= 0.25"
+    },
+    "kill_criteria": "Frictionless straddle capture on real chains below 3%.",
+    "data_required": "EOD option chains with IV, 15+ years",
+    "capacity_note": "large",
+    "decay_risk": "low",
+    "status": "killed",
+    "created_at": 1785976290.7254055,
+    "notes": [
+      "[2026-08-06] registered -> killed: Not killed on evidence -- never tested on real data. Closed because the owner's >20% return bar is unreachable by this strategy at sane leverage. The kill criterion was never run; the free Colab notebook remains available."
+    ]
+  }
+}

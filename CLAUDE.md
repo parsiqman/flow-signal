@@ -1,4 +1,54 @@
-# Project: Options Trading Algo — Variance Risk Premium Harvest
+# Project: CLOSED (2026-08-06)
+
+## Status: stopped by the owner. Do not restart without an explicit request.
+
+The owner set a return bar of >20% annually, on the reasoning that anything
+below it does not justify the risk and effort versus passively holding index
+funds. That bar is not reachable by this work, and the project was wound down
+on that basis. The reasoning, in short:
+
+- Return is roughly Sharpe x volatility. Clearing 20% needs a Sharpe of ~1.0
+  minimum and realistically 1.3+, or leverage.
+- The strategy built here (defined-risk variance risk premium harvest) is
+  honestly a Sharpe 0.5-1.0 business: 6-12% at sane risk. Below the bar.
+- Leverage closes the gap arithmetically and is precisely how this strategy
+  kills people. XIV lost 96% in a single night in February 2018 doing exactly
+  this. Ruled out, not deferred.
+- Estimated probability of sustaining >20% over 5+ years as a retail algo
+  trader: 3-5%. Wanting a higher return does not make one available; it raises
+  the required risk and lowers the odds.
+
+**This was the correct decision given the bar, and it is the outcome the whole
+project was built to be able to reach honestly.** Do not treat it as a problem
+to be solved by loosening a threshold or searching harder.
+
+## If work ever resumes
+
+The reasoning is all preserved and still valid. Read in this order:
+- `LAB.md` — the research platform (the durable part; strategy-agnostic)
+- `STRATEGY.md` — the candidate, its results, and three instructive bugs
+- `DATA.md` — real-chain ingestion, and the pre-registered kill criterion
+  that was never run
+- `DECISION.md` — why equities over crypto/DeFi (optimised for provability;
+  a return-maximising objective would weight this differently)
+
+The one experiment never performed: `notebooks/real_option_chains.ipynb` in
+Colab, which measures whether the variance risk premium actually exists in real
+market data. It is free and takes about an hour. Nothing here has ever touched a
+real option chain.
+
+Three things worth carrying to any future project, trading or not:
+1. A backtest is only as trustworthy as the market it runs in, and a broken
+   market fails SILENTLY. Validate the data before trusting any result.
+2. The search is the enemy. Every configuration tried raises the bar the winner
+   must clear. Count them all, including the ones that felt like debugging.
+3. If you cannot name who is on the other side and why they keep losing, you
+   have found a pattern in a dataset, not an edge.
+
+---
+
+# Archived project context below (for reference only)
+
 
 ## What this is
 A research platform for scouting, testing, validating and iterating on trading
