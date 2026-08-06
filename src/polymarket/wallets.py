@@ -90,48 +90,91 @@ class WalletRecord:
     last_ts: float
 
 
-def score_wallets(trades: pd.DataFrame, min_trades: int = 20) -> pd.DataFrame:
+def score_wallets(trades: pd.DataFrame, min_trades: int = 20,
+                  min_markets: int = 10) -> pd.DataFrame:
     """
     One row per wallet, with edge measured against the prices they paid.
 
-    `min_trades` matters more than it looks: wallets with a handful of trades
-    dominate any ranking by luck alone, and including them inflates the
-    population's dispersion, which then makes the luck baseline look worse for
-    everyone. Twenty is a floor, not a recommendation.
+    **Trades are aggregated to the MARKET before anything is computed**, and
+    that is the whole correctness story here. A market resolves exactly once,
+    so every trade a wallet makes in it shares one outcome: 42 trades in a
+    single market is ONE independent bet, not 42. Treating them as 42
+    observations inflates the t-statistic by sqrt(42), roughly 6.5x.
+
+    This was not a hypothetical. The first live scan produced a t-statistic of
+    124 and a "54 cents/share edge", and 7 of the 11 wallets that cleared the
+    luck bar had two or fewer distinct markets between them. Synthetic fixtures
+    never caught it because they spread each wallet's trades evenly across
+    hundreds of markets; real traders pile into a handful.
+
+    So: compute a size-weighted edge per (wallet, market), then treat each
+    market as one observation. `min_markets` is the binding filter -- a wallet
+    with nine resolved markets cannot be told apart from luck no matter how
+    many times it traded them.
     """
     t = normalise_trades(trades)
     t = t[t["eff_outcome"].notna()]        # resolved markets only
     if t.empty:
-        return pd.DataFrame(columns=[f.name for f in WalletRecord.__dataclass_fields__.values()])
+        return pd.DataFrame(columns=[f.name for f in
+                                     WalletRecord.__dataclass_fields__.values()])
+
+    t["_edge"] = t["eff_outcome"] - t["eff_price"]
+
+    # Step 1: collapse to one observation per (wallet, market). Vectorised --
+    # a groupby.apply with a Python callable is ~100x slower here and made the
+    # scan time out on realistic wallet counts.
+    t["_we"] = t["size"] * t["_edge"]
+    t["_wp"] = t["size"] * t["eff_price"]
+    mk = (t.groupby(["wallet", "market_id"], sort=False)
+          .agg(_we=("_we", "sum"), _wp=("_wp", "sum"), _sz=("size", "sum"),
+               stake=("stake", "sum"), profit=("profit", "sum"),
+               n_fills=("size", "size"))
+          .reset_index())
+    mk = mk[mk["_sz"] > 0]
+    mk["edge"] = mk["_we"] / mk["_sz"]
+    mk["price"] = mk["_wp"] / mk["_sz"]
 
     rows = []
-    for wallet, g in t.groupby("wallet", sort=False):
-        n = len(g)
-        if n < min_trades:
+    for wallet, g in mk.groupby("wallet", sort=False):
+        n_fills = int(g["n_fills"].sum())
+        n_mkts = len(g)
+        if n_fills < min_trades or n_mkts < min_markets:
             continue
-        per_share = (g["eff_outcome"] - g["eff_price"]).to_numpy()
-        w = g["size"].to_numpy(dtype=float)
-        stake = g["stake"].sum()
-        edge = float(np.average(per_share, weights=w))
-        # The standard error of a WEIGHTED mean is not sd/sqrt(n). Trade sizes
-        # are heavily skewed, so a wallet's effective sample size -- Kish's
-        # n_eff = (sum w)^2 / sum(w^2) -- can be a small fraction of its trade
-        # count. Using sd/sqrt(n) here inflated every t-statistic and let noise
-        # through the luck gate.
-        n_eff = float(w.sum() ** 2 / np.sum(w ** 2)) if w.sum() > 0 else np.nan
-        sd = (float(np.sqrt(np.average((per_share - edge) ** 2, weights=w)))
-              if n > 1 else np.nan)
-        se = sd / np.sqrt(n_eff) if np.isfinite(sd) and sd > 0 and n_eff > 1 else np.nan
+        # Weight by SIZE (shares), not stake (dollars). Stake is price x size,
+        # and price is correlated with the mispricing being measured, so
+        # stake-weighting drags the estimate negative by roughly sigma^2/E[p] --
+        # about 12 cents at the dispersions used in the fixtures. Size carries
+        # no such correlation. Caught by
+        # test_fixture_actually_contains_the_edge_it_advertises.
+        w = g["_sz"].to_numpy(dtype=float)
+        edges = g["edge"].to_numpy(dtype=float)
+        stake = float(g["stake"].sum())
+        if stake <= 0 or w.sum() <= 0 or not np.isfinite(edges).all():
+            continue
+        edge = float(np.average(edges, weights=w))
+        # Kish effective sample size over MARKETS, not fills.
+        n_eff = float(w.sum() ** 2 / np.sum(w ** 2))
+        sd = (float(np.sqrt(np.average((edges - edge) ** 2, weights=w)))
+              if n_mkts > 1 else np.nan)
+        # Variance floor. A wallet whose market-level edges happen to be nearly
+        # identical produces a near-zero standard error and an astronomical
+        # t-statistic from no real information. Binary outcomes cannot be more
+        # precise than the binomial bound at the prices actually traded.
+        price = float(np.average(g["price"], weights=w))
+        floor = np.sqrt(max(price * (1 - price), 0.01)) * 0.25
+        sd = max(sd, floor) if np.isfinite(sd) else floor
+        se = sd / np.sqrt(n_eff) if n_eff > 1 else np.nan
+
         rows.append(WalletRecord(
-            wallet=wallet, n_trades=n, n_eff=round(float(n_eff), 1),
-            n_markets=int(g["market_id"].nunique()),
-            total_stake=float(stake), total_profit=float(g["profit"].sum()),
+            wallet=wallet, n_trades=n_fills, n_eff=round(n_eff, 1),
+            n_markets=n_mkts,
+            total_stake=stake, total_profit=float(g["profit"].sum()),
             edge_per_share=edge, edge_se=float(se) if se else np.nan,
             t_stat=float(edge / se) if se and se > 0 else np.nan,
             roi=float(g["profit"].sum() / stake) if stake > 0 else np.nan,
-            avg_price=float(np.average(g["eff_price"], weights=g["size"])),
-            first_ts=float(g["timestamp"].min()),
-            last_ts=float(g["timestamp"].max()),
+            avg_price=price,
+            first_ts=float(t.loc[t["wallet"] == wallet, "timestamp"].min()),
+            last_ts=float(t.loc[t["wallet"] == wallet, "timestamp"].max()),
         ))
     return pd.DataFrame([r.__dict__ for r in rows])
 
@@ -270,7 +313,8 @@ def luck_adjusted_ranking(scored: pd.DataFrame,
 
 def persistence_test(trades: pd.DataFrame, split_ts: float | None = None,
                      min_trades_each: int = 15, top_frac: float = 0.10,
-                     split_on: str = "resolved_at") -> dict:
+                     split_on: str = "resolved_at",
+                     min_markets_each: int = 5) -> dict:
     """
     Rank wallets on the first period, measure them on the second.
 
@@ -312,10 +356,10 @@ def persistence_test(trades: pd.DataFrame, split_ts: float | None = None,
 
     a = score_wallets(early.rename(columns={"eff_outcome": "_"}).assign(
         outcome=early["eff_outcome"], price=early["eff_price"], side="BUY"),
-        min_trades=min_trades_each)
+        min_trades=min_trades_each, min_markets=min_markets_each)
     b = score_wallets(late.rename(columns={"eff_outcome": "_"}).assign(
         outcome=late["eff_outcome"], price=late["eff_price"], side="BUY"),
-        min_trades=min_trades_each)
+        min_trades=min_trades_each, min_markets=min_markets_each)
     if a.empty or b.empty:
         return {"verdict": "too few wallets active in both periods",
                 "n_selected": 0}

@@ -49,7 +49,8 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         section("OFFLINE MODE - synthetic fixtures with known ground truth")
         trades, truth = fixtures.generate_wallets(
             n_wallets=args.offline_wallets, skilled_frac=args.offline_skilled,
-            skill_edge=args.offline_edge, trades_per_wallet=(60, 300), seed=0)
+            skill_edge=args.offline_edge, trades_per_wallet=(60, 300), seed=0,
+            n_markets=400)
         log(f"generated {len(trades):,} trades across "
             f"{trades.wallet.nunique():,} wallets")
         log(f"ground truth: {int(truth.is_skilled.sum())} skilled wallets at "
@@ -88,9 +89,32 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
 
     log("\n" + client.describe_response(raw, "trades"))
 
-    section("3. NORMALISING")
-    trades = client.normalise_trades(raw, resolved)
-    log(f"{len(trades):,} resolved trades | {trades.wallet.nunique():,} wallets")
+    section("3. FETCHING FULL WALLET HISTORIES")
+    log("Judging a wallet on whichever trades fell inside our market sample is")
+    log("both a tiny sample and the wrong one. Candidates are ranked by ACTIVITY")
+    log("(outcome-independent), never by profit.\n")
+    seed_trades = client.normalise_trades(raw, resolved)
+    activity = seed_trades.groupby("wallet").size().to_dict()
+    candidates = list(activity)
+    log(f"{len(candidates):,} candidate wallets from the sample")
+
+    full_raw, fmeta = client.fetch_full_histories(
+        api, candidates, max_wallets=args.max_wallets, activity=activity)
+    for k, v in fmeta.items():
+        log(f"  {k:22} {v:,}")
+    if full_raw.empty:
+        log("full-history fetch returned nothing; falling back to the sample")
+        trades, meta["n_wallets_discovered"] = seed_trades, len(candidates)
+    else:
+        trades = client.normalise_trades(full_raw, resolved)
+        # N for the luck correction is the number of wallets whose PERFORMANCE
+        # was examined, not the number discovered.
+        meta["n_wallets_discovered"] = fmeta["n_wallets_examined"]
+        meta.update(fmeta)
+
+    log(f"\n{len(trades):,} resolved trades | {trades.wallet.nunique():,} wallets")
+    log(f"median distinct markets per wallet: "
+        f"{trades.groupby('wallet')['market_id'].nunique().median():.0f}")
     meta["mode"] = "live"
     return trades, meta
 
@@ -100,9 +124,12 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
     n_scanned = int(meta.get("n_wallets_discovered", trades.wallet.nunique()))
 
     section("4. SCORING WALLETS")
-    scored = wallets.score_wallets(trades, min_trades=args.min_trades)
-    log(f"{len(scored):,} wallets with >= {args.min_trades} resolved trades "
-        f"(of {n_scanned:,} discovered)")
+    scored = wallets.score_wallets(trades, min_trades=args.min_trades,
+                                   min_markets=args.min_markets)
+    log(f"{len(scored):,} wallets with >= {args.min_trades} fills across "
+        f">= {args.min_markets} distinct markets (of {n_scanned:,} examined)")
+    log("Trades are aggregated to the MARKET first: a market resolves once, so "
+        "42 fills in one market is ONE bet, not 42.")
     if scored.empty:
         return {"verdict": "no wallet had enough resolved trades to score",
                 "n_wallets_scanned": n_scanned, "n_scored": 0}
@@ -209,7 +236,7 @@ def write_report(report: dict, meta: dict, args, out: Path) -> None:
         "|---|---|",
         f"| mode | {meta.get('mode')} |",
         f"| wallets discovered | {report.get('n_wallets_scanned', 0):,} |",
-        f"| wallets scored (>= {args.min_trades} trades) | {report.get('n_scored', 0):,} |",
+        f"| wallets scored (>={args.min_trades} fills, >={args.min_markets} markets) | {report.get('n_scored', 0):,} |",
         f"| t-stat needed to clear luck | {report.get('t_needed')} |",
         f"| best t observed | {report.get('best_t')} |",
         f"| best edge observed | {report.get('best_edge_cents')} c/share |",
@@ -241,6 +268,10 @@ def main() -> int:
                     help="resolved markets to fetch before sampling")
     ap.add_argument("--min-volume", type=float, default=5000.0)
     ap.add_argument("--min-trades", type=int, default=20)
+    ap.add_argument("--min-markets", type=int, default=10,
+                    help="distinct resolved markets required to judge a wallet")
+    ap.add_argument("--max-wallets", type=int, default=400,
+                    help="wallets to pull full history for; the honest N")
     ap.add_argument("--top-frac", type=float, default=0.10)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--rate-limit", type=float, default=0.25)

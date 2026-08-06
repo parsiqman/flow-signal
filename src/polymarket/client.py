@@ -301,6 +301,45 @@ def discover_population(client: PolymarketClient, markets: pd.DataFrame,
     return raw_trades, meta
 
 
+def fetch_full_histories(client: "PolymarketClient", candidates: list[str],
+                         max_wallets: int = 400,
+                         activity: dict[str, int] | None = None,
+                         limit_per_wallet: int = 3000
+                         ) -> tuple[pd.DataFrame, dict]:
+    """
+    Fetch each candidate's COMPLETE trade history, not just the slice that
+    happened to fall inside the sampled markets.
+
+    Without this a wallet is judged on whichever handful of its trades landed in
+    our sample, which is both a tiny sample and the wrong one -- and it makes the
+    persistence test impossible, since almost no wallet appears in both halves
+    of a 200-market slice. The first live run scored 313 wallets and found
+    exactly ONE active in both periods.
+
+    Candidates are ranked by ACTIVITY (fill count), never by profit. Activity is
+    outcome-independent, so narrowing by it does not pre-select winners the way
+    a leaderboard would. The number of wallets whose performance is then
+    examined -- `max_wallets` -- is the honest N for the luck correction, and it
+    is returned as such.
+    """
+    order = sorted(candidates, key=lambda w: -(activity or {}).get(w, 0))
+    chosen = order[:max_wallets]
+    frames, failures = [], 0
+    for w in chosen:
+        try:
+            raw = client.user_trades(w, limit=limit_per_wallet)
+        except RuntimeError:
+            failures += 1
+            continue
+        if raw:
+            frames.append(pd.DataFrame(raw))
+    meta = {"n_candidates": len(candidates), "n_fetched": len(frames),
+            "n_wallets_examined": len(chosen), "fetch_failures": failures}
+    if not frames:
+        return pd.DataFrame(), meta
+    return pd.concat(frames, ignore_index=True), meta
+
+
 # ---------------------------------------------------------------------------
 # Normalisation
 # ---------------------------------------------------------------------------
