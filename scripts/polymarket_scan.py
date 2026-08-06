@@ -328,7 +328,9 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
     log(f"\n{len(cond_ids):,} distinct markets touched; resolving them by id")
     resolved = client.markets_by_condition_ids(api, cond_ids)
     log(f"  lookup form used         : {resolved.attrs.get('lookup_form', '?')}")
-    log(f"  ids requested            : {resolved.attrs.get('n_requested', '?'):,}")
+    log(f"  ids requested            : {resolved.attrs.get('n_requested', 0):,}")
+    log(f"  answered by gamma batch  : {resolved.attrs.get('n_from_gamma', 0):,}")
+    log(f"  answered per-id by clob  : {resolved.attrs.get('n_from_clob', 0):,}")
     log(f"  markets matched by id    : {len(resolved):,}")
     resolved = resolved[resolved["winning_index"].notna()]
     log(f"  with a determinable outcome: {len(resolved):,}")
@@ -356,8 +358,16 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
         log("\nUnmatched fills are dropped silently by the join, so a low match")
         log("rate here means the market pool is too shallow to judge this wallet,")
         log("NOT that the wallet traded little.")
+    coverage = len(trades) / max(len(raw_all), 1)
+    if coverage < 0.5:
+        log(f"\n  WARNING: only {coverage:.0%} of fills were matched. Anything")
+        log("  computed below describes that subset, not this wallet.")
     return trades, {"n_wallets_discovered": 1, "mode": "named",
                     "named_wallets": addrs,
+                    "n_raw_fills": int(len(raw_all)),
+                    "n_markets_touched": int(len(cond_ids)),
+                    "n_markets_resolved": int(len(resolved)),
+                    "fill_coverage": float(coverage),
                     "match_note": "scored only on fills matched to resolved markets"}
 
 
@@ -487,8 +497,20 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
                    f"performance does NOT predict future performance -- "
                    f"consistent with those wallets having been lucky.")
 
+    # A verdict is only as good as the share of the record it saw. Scoring this
+    # account on 13 of its 1,831 markets produced a confident "NO" off n_eff
+    # 4.7 -- an answer about the data pipeline wearing the clothes of an answer
+    # about the trader. Below half coverage, say so instead of concluding.
+    cov = meta.get("fill_coverage")
+    if cov is not None and cov < 0.5:
+        verdict = (f"INCONCLUSIVE. Only {cov:.0%} of this wallet's fills could "
+                   f"be matched to a resolved market, so the sample scored is "
+                   f"not its record. Fix coverage before reading any verdict. "
+                   f"(Underlying result on the matched subset: {verdict})")
+
     return {
         "verdict": verdict,
+        "fill_coverage": cov,
         "n_wallets_scanned": n_scanned,
         "n_scored": int(len(scored)),
         "t_needed": round(t_needed, 2),

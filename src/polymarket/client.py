@@ -535,12 +535,27 @@ def markets_by_condition_ids(client: "PolymarketClient",
                 continue
             rows.extend(_asked_for(payload, chunk))
     else:
-        label = "clob per-id"
-        rows.extend(_clob_markets(client, ids))
+        label = "none verified"
+
+    n_gamma = len(rows)
+    # Gamma's batch filter answers for recent markets and quietly returns
+    # nothing for the rest -- asked for this wallet's 1,831 condition ids it
+    # returned 13, all of them from the last two days. A partial answer is the
+    # same hazard as a wrong one: 13 markets scored the account at n_eff 4.7,
+    # which is a coin-flip dressed as a verdict. So anything Gamma did not
+    # answer for is re-asked one id at a time, where the id is in the URL path
+    # and cannot be silently dropped by a filter.
+    have = {str(r.get("conditionId") or r.get("condition_id") or "").lower()
+            for r in rows}
+    missing = [c for c in ids if c.lower() not in have]
+    if missing:
+        rows.extend(_clob_markets(client, missing))
 
     df = _markets_to_frame(rows)
     df.attrs["lookup_form"] = label
     df.attrs["n_requested"] = len(ids)
+    df.attrs["n_from_gamma"] = n_gamma
+    df.attrs["n_from_clob"] = len(rows) - n_gamma
     df.attrs["n_matched"] = len(df)
     return df
 
