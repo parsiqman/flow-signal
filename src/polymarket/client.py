@@ -68,6 +68,8 @@ TRADE_FIELD_CANDIDATES = {
 MARKET_FIELD_CANDIDATES = {
     "market_id": ["conditionId", "condition_id", "market_id", "id"],
     "question": ["question", "title", "slug"],
+    "category": ["category", "categories", "tags", "eventCategory", "groupSlug"],
+    "slug": ["slug", "marketSlug", "ticker"],
     "end_date": ["endDate", "end_date", "endDateIso", "closedTime",
                  "resolutionTime"],
     "outcome_prices": ["outcomePrices", "outcome_prices", "prices"],
@@ -246,6 +248,120 @@ def discover_by_leaderboard(*args, **kwargs):
         "Leaderboard seeding selects on the outcome variable and invalidates "
         "every downstream statistic. Use discover_population(), which "
         "enumerates wallets by market participation instead.")
+
+
+# Keyword rules for bucketing markets when the API gives no usable category.
+# Deliberately crude: this only has to be good enough to concentrate a sample,
+# and a wallet's measured specialisation is verified against its actual trades
+# afterwards rather than trusted from the label.
+CATEGORY_RULES = {
+    "weather": ["temperature", "weather", "rain", "snow", "hurricane", "storm",
+                "degrees", "celsius", "fahrenheit", "climate", "tornado"],
+    "sports": ["nba", "nfl", "mlb", "nhl", "soccer", "football", "basketball",
+               "tennis", "ufc", "boxing", "premier league", "champions league",
+               "world cup", "olympics", "golf", "cricket", "baseball"],
+    "politics": ["election", "president", "senate", "congress", "governor",
+                 "parliament", "prime minister", "nominee", "primary", "vote",
+                 "cabinet", "impeach", "supreme court"],
+    "crypto": ["bitcoin", "btc", "ethereum", "eth", "solana", "crypto", "token",
+               "coinbase", "binance", "stablecoin", "etf"],
+    "econ": ["fed", "inflation", "cpi", "gdp", "rate cut", "rate hike",
+             "unemployment", "recession", "jobs report", "fomc"],
+    "entertainment": ["oscar", "grammy", "emmy", "box office", "album",
+                      "rotten tomatoes", "netflix", "movie", "billboard"],
+}
+
+
+def label_categories(markets: pd.DataFrame) -> pd.DataFrame:
+    """
+    Bucket markets by subject, from the API's own category when present and from
+    the question text otherwise.
+
+    This exists because specialists are the whole point. A trader with genuine
+    forecasting skill in one domain -- weather being the clearest case, where
+    better models than the market consensus are a real, legal and repeatable
+    edge -- trades almost exclusively in that domain. Sampling uniformly across
+    all of Polymarket gives such a trader a vanishing chance of appearing, and
+    the first live scan demonstrated it: 44 markets drawn at random, nobody found.
+    """
+    out = markets.copy()
+    parts = [out["question"].fillna("").astype(str)]
+    for col in ("slug", "api_category"):
+        if col in out.columns:
+            parts.append(out[col].fillna("").astype(str))
+    text = parts[0]
+    for extra in parts[1:]:
+        text = text + " " + extra
+    text = text.str.lower()
+
+    cat = pd.Series("other", index=out.index, dtype=object)
+    for name, words in CATEGORY_RULES.items():
+        hit = text.apply(lambda s, w=words: any(k in s for k in w))
+        cat = cat.where(~(hit & (cat == "other")), name)
+    out["category"] = cat
+    return out
+
+
+def discover_stratified(client: PolymarketClient, markets: pd.DataFrame,
+                        per_category: int = 120, seed: int = 0,
+                        categories: list[str] | None = None,
+                        max_trades_per_market: int = 5000
+                        ) -> tuple[pd.DataFrame, dict]:
+    """
+    Sample markets WITHIN each category rather than uniformly across all of them.
+
+    Two things this buys, and both matter:
+
+    1. **Specialists become findable.** Concentrating the sample inside a domain
+       means a trader who only touches that domain appears in enough markets to
+       be judged, instead of surfacing once and being filtered out.
+    2. **The luck bar falls.** The multiple-testing correction scales with how
+       many wallets were searched. Scanning 400 weather traders carries a far
+       weaker penalty than scanning 40,000 of everybody, so a real edge inside a
+       category needs to be much smaller to be provable there.
+
+    Point 2 is easy to miss: narrowing the search BEFORE looking at performance
+    makes edges easier to prove, not harder. What must never happen is narrowing
+    on performance itself -- that is the leaderboard trap.
+    """
+    rng = np.random.default_rng(seed)
+    labelled = label_categories(markets)
+    cats = categories or [c for c in labelled["category"].unique() if c != "other"]
+
+    frames, meta_by_cat = [], {}
+    for cat in cats:
+        pool = labelled[labelled["category"] == cat]
+        if pool.empty:
+            continue
+        take = min(per_category, len(pool))
+        idx = rng.choice(len(pool), size=take, replace=False)
+        sample = pool.iloc[np.sort(idx)]
+        got = 0
+        for mid in sample["market_id"]:
+            try:
+                raw = client.market_trades(mid, limit=max_trades_per_market)
+            except RuntimeError:
+                continue
+            if raw:
+                df = pd.DataFrame(raw)
+                df["_category"] = cat
+                frames.append(df)
+                got += 1
+        meta_by_cat[cat] = {"pool": len(pool), "sampled": take, "fetched": got}
+
+    if not frames:
+        return pd.DataFrame(), {"by_category": meta_by_cat,
+                                "n_wallets_discovered": 0}
+    raw_trades = pd.concat(frames, ignore_index=True)
+    try:
+        wcol = resolve_fields(raw_trades, TRADE_FIELD_CANDIDATES,
+                              ("wallet",), "trades")["wallet"]
+        n_wallets = int(raw_trades[wcol].nunique())
+    except ValueError:
+        n_wallets = 0
+    return raw_trades, {"by_category": meta_by_cat,
+                        "n_raw_trades": len(raw_trades),
+                        "n_wallets_discovered": n_wallets}
 
 
 def discover_population(client: PolymarketClient, markets: pd.DataFrame,
@@ -452,7 +568,12 @@ def _markets_to_frame(rows: Iterable[dict]) -> pd.DataFrame:
             if max(vals) > 0.99 and min(vals) < 0.01:
                 win = int(np.argmax(vals))
         end = r.get(f.get("end_date", "endDate"))
+        raw_cat = r.get(f.get("category", "category"))
+        if isinstance(raw_cat, (list, tuple)):
+            raw_cat = " ".join(str(x) for x in raw_cat)
         recs.append({
+            "slug": r.get(f.get("slug", "slug")),
+            "api_category": raw_cat,
             "market_id": str(r.get(f["market_id"], "")),
             "question": r.get(f.get("question", "question")),
             "winning_index": win,
