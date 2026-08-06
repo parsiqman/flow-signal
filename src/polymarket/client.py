@@ -44,26 +44,66 @@ import pandas as pd
 GAMMA = "https://gamma-api.polymarket.com"
 DATA = "https://data-api.polymarket.com"
 
-# Field names as documented for the public APIs. Response shapes do change, so
-# these are isolated here and validated loudly on first fetch rather than being
-# scattered through the code -- see `validate_trade_fields`.
-TRADE_FIELDS = {
-    "wallet": "proxyWallet",
-    "market_id": "conditionId",
-    "timestamp": "timestamp",
-    "price": "price",
-    "size": "size",
-    "side": "side",
-    "outcome_index": "outcomeIndex",
+# Public API field names, as CANDIDATE LISTS rather than single guesses.
+#
+# The shapes below are documented, but they drift, and this code could not be
+# tested against the live API from the sandbox it was written in -- every
+# Polymarket host is blocked there. A single hardcoded name that turns out to be
+# wrong produces a KeyError at best and a NaN column at worst. Accepting several
+# plausible spellings and reporting which one matched turns an unattended crash
+# into a line in the log.
+TRADE_FIELD_CANDIDATES = {
+    "wallet": ["proxyWallet", "proxy_wallet", "user", "userAddress", "maker",
+               "owner", "account", "wallet"],
+    "market_id": ["conditionId", "condition_id", "market", "marketId",
+                  "market_id"],
+    "timestamp": ["timestamp", "matchTime", "match_time", "time", "createdAt",
+                  "created_at"],
+    "price": ["price", "matchedPrice", "avgPrice"],
+    "size": ["size", "shares", "amount", "quantity", "matchedAmount"],
+    "side": ["side", "direction", "takerSide"],
+    "outcome_index": ["outcomeIndex", "outcome_index", "outcomeIdx",
+                      "outcome_idx", "asset_index"],
 }
-MARKET_FIELDS = {
-    "market_id": "conditionId",
-    "question": "question",
-    "closed": "closed",
-    "end_date": "endDate",
-    "outcome_prices": "outcomePrices",
-    "volume": "volumeNum",
+MARKET_FIELD_CANDIDATES = {
+    "market_id": ["conditionId", "condition_id", "market_id", "id"],
+    "question": ["question", "title", "slug"],
+    "end_date": ["endDate", "end_date", "endDateIso", "closedTime",
+                 "resolutionTime"],
+    "outcome_prices": ["outcomePrices", "outcome_prices", "prices"],
+    "volume": ["volumeNum", "volume", "volumeClob", "volume_num"],
 }
+
+# Filled in by `resolve_fields` on first successful fetch, so downstream code
+# and the logs both show what was actually matched.
+TRADE_FIELDS: dict[str, str] = {}
+MARKET_FIELDS: dict[str, str] = {}
+
+
+def resolve_fields(df: pd.DataFrame, candidates: dict[str, list[str]],
+                   required: tuple[str, ...], label: str) -> dict[str, str]:
+    """
+    Match canonical names onto whichever spelling this response actually uses.
+
+    Comparison is case-insensitive because vendors are inconsistent about it.
+    Raises with the full column list when a REQUIRED field cannot be found --
+    the one situation where guessing would be worse than stopping.
+    """
+    lower = {str(c).lower(): str(c) for c in df.columns}
+    found: dict[str, str] = {}
+    for canonical, options in candidates.items():
+        for opt in options:
+            if opt.lower() in lower:
+                found[canonical] = lower[opt.lower()]
+                break
+    missing = [f for f in required if f not in found]
+    if missing:
+        raise ValueError(
+            f"{label}: could not find {missing} in the response.\n"
+            f"Tried: {({m: candidates[m] for m in missing})}\n"
+            f"Response columns: {sorted(str(c) for c in df.columns)}\n"
+            f"Add the correct spelling to the candidate list in client.py.")
+    return found
 
 
 @dataclass
@@ -245,7 +285,11 @@ def discover_population(client: PolymarketClient, markets: pd.DataFrame,
         return pd.DataFrame(), {"n_wallets_discovered": 0, "n_markets": 0,
                                 "failures": failures}
     raw_trades = pd.concat(frames, ignore_index=True)
-    wallet_col = TRADE_FIELDS["wallet"]
+    try:
+        wallet_col = resolve_fields(raw_trades, TRADE_FIELD_CANDIDATES,
+                                    ("wallet",), "trades")["wallet"]
+    except ValueError:
+        wallet_col = ""
     meta = {
         "n_markets_sampled": len(sample),
         "n_markets_fetched": len(frames),
@@ -261,22 +305,43 @@ def discover_population(client: PolymarketClient, markets: pd.DataFrame,
 # Normalisation
 # ---------------------------------------------------------------------------
 
-def validate_trade_fields(raw: pd.DataFrame) -> None:
+REQUIRED_TRADE_FIELDS = ("wallet", "market_id", "price", "size", "side")
+
+
+def validate_trade_fields(raw: pd.DataFrame) -> dict[str, str]:
     """
-    Fail loudly if the API shape has drifted.
+    Resolve and record the trade field mapping, or fail loudly.
 
     A silently-missing field becomes a NaN column and then a plausible-looking
     result computed from nothing. This project has already produced three
     confident wrong answers from exactly that pattern; the guard is cheap.
+
+    `outcome_index` and `timestamp` are not required: some responses name the
+    taken side textually, and a missing timestamp only costs the persistence
+    split, which falls back to resolution time anyway.
     """
-    missing = [k for k, v in TRADE_FIELDS.items() if v not in raw.columns]
-    if missing:
-        raise ValueError(
-            f"Polymarket trade response is missing {missing} "
-            f"(expected columns {[TRADE_FIELDS[m] for m in missing]}).\n"
-            f"Got: {sorted(raw.columns)[:25]}\n"
-            f"The API shape has probably changed -- update TRADE_FIELDS in "
-            f"client.py rather than working around it downstream.")
+    global TRADE_FIELDS
+    TRADE_FIELDS = resolve_fields(raw, TRADE_FIELD_CANDIDATES,
+                                  REQUIRED_TRADE_FIELDS, "Polymarket trades")
+    return TRADE_FIELDS
+
+
+def describe_response(raw: pd.DataFrame, label: str = "trades") -> str:
+    """Human-readable report of what matched, for unattended log reading."""
+    cands = (TRADE_FIELD_CANDIDATES if label == "trades"
+             else MARKET_FIELD_CANDIDATES)
+    req = REQUIRED_TRADE_FIELDS if label == "trades" else ("market_id",)
+    try:
+        found = resolve_fields(raw, cands, req, label)
+    except ValueError as e:
+        return f"[{label}] FIELD RESOLUTION FAILED\n{e}"
+    lines = [f"[{label}] {len(raw)} rows, {len(raw.columns)} columns"]
+    for k in cands:
+        lines.append(f"    {k:15} -> {found.get(k, '(not found)')}")
+    unused = sorted(set(map(str, raw.columns)) - set(found.values()))
+    if unused:
+        lines.append(f"    unused columns: {unused[:12]}")
+    return "\n".join(lines)
 
 
 def normalise_trades(raw: pd.DataFrame, markets: pd.DataFrame) -> pd.DataFrame:
@@ -288,17 +353,28 @@ def normalise_trades(raw: pd.DataFrame, markets: pd.DataFrame) -> pd.DataFrame:
     persistence split can be made on resolution time rather than trade time --
     the difference between a valid test and a lookahead-contaminated one.
     """
-    validate_trade_fields(raw)
-    f = TRADE_FIELDS
+    f = validate_trade_fields(raw)
     df = pd.DataFrame({
         "wallet": raw[f["wallet"]].astype(str).str.lower(),
         "market_id": raw[f["market_id"]].astype(str),
-        "timestamp": pd.to_numeric(raw[f["timestamp"]], errors="coerce"),
         "price": pd.to_numeric(raw[f["price"]], errors="coerce"),
         "size": pd.to_numeric(raw[f["size"]], errors="coerce"),
         "side": raw[f["side"]].astype(str).str.upper(),
-        "outcome_index": pd.to_numeric(raw[f["outcome_index"]], errors="coerce"),
     })
+    df["timestamp"] = (pd.to_numeric(raw[f["timestamp"]], errors="coerce")
+                       if "timestamp" in f else np.nan)
+    if "outcome_index" in f:
+        df["outcome_index"] = pd.to_numeric(raw[f["outcome_index"]],
+                                            errors="coerce")
+    elif "outcome" in raw.columns:
+        # Some responses name the side taken ("Yes"/"No") instead of indexing it.
+        df["outcome_index"] = (raw["outcome"].astype(str).str.strip().str.lower()
+                               .map({"yes": 0, "no": 1}))
+    else:
+        raise ValueError(
+            "No outcomeIndex and no outcome label in the trade response, so "
+            "there is no way to tell which side a trade took. Refusing rather "
+            "than guessing.")
 
     m = markets[["market_id", "winning_index", "resolved_at"]].copy()
     m["market_id"] = m["market_id"].astype(str)
@@ -314,10 +390,17 @@ def normalise_trades(raw: pd.DataFrame, markets: pd.DataFrame) -> pd.DataFrame:
 
 def _markets_to_frame(rows: Iterable[dict]) -> pd.DataFrame:
     """Gamma markets -> market_id, winning_index, resolved_at, volume."""
+    global MARKET_FIELDS
+    rows = list(rows)
+    if not rows:
+        return pd.DataFrame(columns=["market_id", "question", "winning_index",
+                                     "resolved_at", "volume"])
+    MARKET_FIELDS = resolve_fields(pd.DataFrame(rows), MARKET_FIELD_CANDIDATES,
+                                   ("market_id",), "Polymarket markets")
     f = MARKET_FIELDS
     recs = []
     for r in rows:
-        prices = r.get(f["outcome_prices"])
+        prices = r.get(f.get("outcome_prices", "outcomePrices"))
         if isinstance(prices, str):
             try:
                 prices = json.loads(prices)
@@ -329,15 +412,16 @@ def _markets_to_frame(rows: Iterable[dict]) -> pd.DataFrame:
             # A resolved binary market prices its outcomes at exactly 1 and 0.
             if max(vals) > 0.99 and min(vals) < 0.01:
                 win = int(np.argmax(vals))
-        end = r.get(f["end_date"])
+        end = r.get(f.get("end_date", "endDate"))
         recs.append({
             "market_id": str(r.get(f["market_id"], "")),
-            "question": r.get(f["question"]),
+            "question": r.get(f.get("question", "question")),
             "winning_index": win,
             "resolved_at": pd.to_datetime(end, errors="coerce",
                                           utc=True).timestamp()
             if end else np.nan,
-            "volume": pd.to_numeric(r.get(f["volume"]), errors="coerce"),
+            "volume": pd.to_numeric(r.get(f.get("volume", "volume")),
+                                    errors="coerce"),
         })
     df = pd.DataFrame(recs)
     return df[df["market_id"] != ""]

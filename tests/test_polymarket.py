@@ -325,7 +325,32 @@ def test_api_shape_drift_fails_loudly():
         client.normalise_trades(raw, mk)
         raise AssertionError("must refuse a response missing a required field")
     except ValueError as e:
-        assert "missing" in str(e) and "price" in str(e)
+        msg = str(e)
+        assert "could not find" in msg and "price" in msg
+        # The message must name the columns that WERE present, or an unattended
+        # failure gives no route to a fix.
+        assert "Response columns" in msg
+
+
+def test_field_names_are_resolved_not_hardcoded():
+    """
+    A single hardcoded field name that turns out wrong crashes an unattended
+    run. Alternative spellings must resolve; genuinely absent fields must not.
+    """
+    shapes = client.sample_response_shapes()
+    raw = pd.DataFrame(shapes["trades"]).rename(
+        columns={"proxyWallet": "user", "conditionId": "market", "size": "shares"})
+    resolved = client.validate_trade_fields(raw)
+    assert resolved["wallet"] == "user"
+    assert resolved["market_id"] == "market"
+    assert resolved["size"] == "shares"
+
+
+def test_response_description_reports_what_matched():
+    """Unattended runs are read from logs, so the mapping must be printed."""
+    raw = pd.DataFrame(client.sample_response_shapes()["trades"])
+    desc = client.describe_response(raw, "trades")
+    assert "proxyWallet" in desc and "wallet" in desc
 
 
 def test_normalisation_drops_trades_with_no_resolution():
