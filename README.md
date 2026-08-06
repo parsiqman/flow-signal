@@ -33,7 +33,11 @@ python tests/test_lab.py                   # 34 tests
 
 python src/options_alpha/run.py --quick    # the candidate strategy, ~70s
 python tests/test_options_alpha.py         # 23 tests
+python tests/test_data.py                  # 26 tests, real-chain ingestion
 ```
+
+Real chains run in **Colab**, not here: this sandbox's egress policy blocks every
+options vendor. See [DATA.md](DATA.md).
 
 ## What's here
 | Path | What |
@@ -41,6 +45,8 @@ python tests/test_options_alpha.py         # 23 tests
 | [LAB.md](LAB.md) | The research platform. **Start here.** |
 | `src/lab/` | Protocol, registry + trial ledger, validation gauntlet, scout, pipeline |
 | [STRATEGY.md](STRATEGY.md) | The first candidate: results, the bugs, next steps |
+| [DATA.md](DATA.md) | Real option chains: what to buy, the quality gate, the kill criterion |
+| `src/data/` + `notebooks/real_option_chains.ipynb` | Ingestion, quality gate, Colab pull |
 | [DECISION.md](DECISION.md) | Why equities over crypto/DeFi. Settled, still valid. |
 | `src/options_alpha/` | The strategy: families, generator, backtest, research harness |
 | `src/market_selection/` | The venue model behind DECISION.md |

@@ -50,6 +50,11 @@ legitimate routes are a genuinely better strategy, or more data.
   - `pipeline.py` — promotion stages that cannot be skipped
   - `run_lab.py` — the machine demonstrated end to end
 - `tests/test_lab.py` — 34 tests, incl. Monte Carlo checks of the statistics
+- `DATA.md` + `src/data/` — real option-chain ingestion: canonical schema,
+  quality gate, constant-maturity IV, strike snapping, `measure_vrp`
+- `notebooks/real_option_chains.ipynb` — the Colab pull (this sandbox cannot
+  reach ANY options vendor; all return 403 on CONNECT)
+- `tests/test_data.py` — 26 tests, every defect reproduced on purpose
 - `STRATEGY.md` — the first candidate: results, bugs, next steps.
 - `DECISION.md` — why equities over crypto/DeFi (settled, still valid).
 - `src/options_alpha/`
@@ -93,14 +98,17 @@ legitimate routes are a genuinely better strategy, or more data.
   requiring local execution is a non-starter.
 
 ## Priorities (in order)
-0. **Buy deep EOD option chain history** (~15-19y, covering 2008/2018/2020/2024).
-   Cheapest options data there is. Without a crisis in the sample, a short-vol
-   backtest measures only the good half of the distribution.
-1. **Re-run this pipeline on real data.** Swap `generate_market()` for a loader
-   producing the same panel columns; everything downstream is source-agnostic.
-2. **Re-run the generator validation on real chains** — measure actual straddle
-   capture per name and year. If real VRP is well below the ~9% assumed here,
-   the economics change materially.
+0. **Run the kill criterion on free data.** DoltHub `post-no-preference/options`
+   is free and covers ~2019-now (Mar-2020, 2022, Aug-2024 = three vol regimes).
+   Run `notebooks/real_option_chains.ipynb` in Colab and check
+   `chain.measure_vrp`. STRATEGY.md commits to abandoning the thesis below 3%
+   capture. Honour that. Spend NO money before this answers yes.
+1. **Only then buy deeper history** (ORATS, 2007+) so 2008 is in the sample.
+   Without a crisis, a short-vol backtest measures the good half of the
+   distribution.
+2. **Run the real panel through the gauntlet.** The panel is schema-identical to
+   the synthetic one, so the backtest and gauntlet run unchanged. Expect real
+   data to be harder than synthetic, not easier.
 3. **Retest the regime filter and richness floor** against real crises.
 4. **Paper trade one full quarter** before any capital.
 5. Only then: a Render cron placing orders, sized far below the backtest.
