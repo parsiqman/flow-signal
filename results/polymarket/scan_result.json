@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06 11:33 UTC",
+  "generated_at": "2026-08-06 12:12 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -11,7 +11,7 @@
     "per_category": 150,
     "categories": "",
     "top_frac": 0.1,
-    "seed": 0,
+    "seed": 1,
     "rate_limit": 0.25,
     "cache": "/tmp/pm_cache",
     "out": "results/polymarket",
@@ -23,19 +23,34 @@
   "meta": {
     "by_category": {
       "sports": {
-        "pool": 4,
-        "sampled": 4,
-        "fetched": 4
+        "pool": 9,
+        "sampled": 9,
+        "fetched": 9
       },
       "crypto": {
-        "pool": 4,
-        "sampled": 4,
-        "fetched": 4
+        "pool": 67,
+        "sampled": 67,
+        "fetched": 66
+      },
+      "politics": {
+        "pool": 30,
+        "sampled": 30,
+        "fetched": 30
+      },
+      "econ": {
+        "pool": 8,
+        "sampled": 8,
+        "fetched": 8
+      },
+      "entertainment": {
+        "pool": 1,
+        "sampled": 1,
+        "fetched": 1
       }
     },
-    "n_raw_trades": 4902,
+    "n_raw_trades": 136547,
     "n_wallets_discovered": 400,
-    "n_candidates": 1979,
+    "n_candidates": 17034,
     "n_fetched": 400,
     "n_wallets_examined": 400,
     "fetch_failures": 0,
@@ -43,44 +58,44 @@
   },
   "verdict": "NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.",
   "n_wallets_scanned": 400,
-  "n_scored": 19,
+  "n_scored": 64,
   "t_needed": 3.7,
-  "best_t": 2.81,
-  "best_edge_cents": 11.65,
+  "best_t": 2.38,
+  "best_edge_cents": 27.0,
   "n_clearing_luck": 0,
   "persistence": {
-    "verdict": "too few wallets active in both periods",
-    "n_selected": 0
+    "verdict": "only 2 wallets active in both periods; too few to conclude anything",
+    "n_selected": 2
   },
   "bias": [
     {
-      "wallet": "0x0c553757831b5ea0fb8b45f95a44e16ceeb29e26",
-      "overall_edge": 0.1165,
-      "extreme_band_stake": 0.808,
-      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
-    },
-    {
-      "wallet": "0x3e27b4fc18d61173110f6edb21e107bc34819890",
-      "overall_edge": 0.0254,
-      "extreme_band_stake": 0.936,
-      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
-    },
-    {
-      "wallet": "0x1c22d715475436165f741dc131812557d97bbf5a",
-      "overall_edge": 0.0246,
-      "extreme_band_stake": 0.932,
-      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
-    },
-    {
-      "wallet": "0x8fda9114900646989afb222022a832ee632b3fd7",
-      "overall_edge": 0.02,
-      "extreme_band_stake": 0.117,
+      "wallet": "0x03ba465926d6f4e451ce1db92dd0150b97f577d6",
+      "overall_edge": 0.27,
+      "extreme_band_stake": 0.049,
       "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     },
     {
-      "wallet": "0x84ae385538622b0a11b3896c601fef29ce678341",
-      "overall_edge": 0.0183,
-      "extreme_band_stake": 0.995,
+      "wallet": "0x78d2ad24aafa9344976a590eebc0fae5a49d7a2b",
+      "overall_edge": 0.2049,
+      "extreme_band_stake": 0.0,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x129b59f3fd6a0555307fa15bca4f87809fb024c4",
+      "overall_edge": 0.1003,
+      "extreme_band_stake": 0.37,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0xde63827b8f8ddd627ad9d7e0b09e8cc49bc446c2",
+      "overall_edge": 0.0992,
+      "extreme_band_stake": 0.37,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x3e27b4fc18d61173110f6edb21e107bc34819890",
+      "overall_edge": 0.0868,
+      "extreme_band_stake": 0.883,
       "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
     }
   ],
