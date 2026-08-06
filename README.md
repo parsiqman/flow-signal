@@ -45,6 +45,7 @@ python tests/test_lab.py                   # 34 tests
 python src/options_alpha/run.py --quick    # the candidate strategy, ~70s
 python tests/test_options_alpha.py         # 23 tests
 python tests/test_data.py                  # 26 tests, real-chain ingestion
+python tests/test_polymarket.py            # 19 tests, copy-trading evaluator
 ```
 
 Real chains run in **Colab**, not here: this sandbox's egress policy blocks every
@@ -56,6 +57,7 @@ options vendor. See [DATA.md](DATA.md).
 | [LAB.md](LAB.md) | The research platform. **Start here.** |
 | `src/lab/` | Protocol, registry + trial ledger, validation gauntlet, scout, pipeline |
 | [STRATEGY.md](STRATEGY.md) | The first candidate: results, the bugs, next steps |
+| [POLYMARKET.md](POLYMARKET.md) | Copy-trading feasibility: the identification-vs-profitability collision |
 | [DATA.md](DATA.md) | Real option chains: what to buy, the quality gate, the kill criterion |
 | `src/data/` + `notebooks/real_option_chains.ipynb` | Ingestion, quality gate, Colab pull |
 | [DECISION.md](DECISION.md) | Why equities over crypto/DeFi. Settled, still valid. |
