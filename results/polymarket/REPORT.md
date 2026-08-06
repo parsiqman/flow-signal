@@ -1,35 +1,21 @@
-# Polymarket wallet scan — 2026-08-06 09:37 UTC
+# Polymarket wallet scan — 2026-08-06 10:52 UTC
 
-## NO. 11 wallet(s) cleared the luck bar but past performance does NOT predict future performance -- consistent with those wallets having been lucky.
+## NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.
 
 | | |
 |---|---|
 | mode | live |
-| wallets discovered | 6,025 |
-| wallets scored (>= 20 trades) | 313 |
-| t-stat needed to clear luck | 4.32 |
-| best t observed | 124.5 |
-| best edge observed | 54.34 c/share |
-| **wallets clearing the bar** | **11** |
+| wallets discovered | 400 |
+| wallets scored (>=20 fills, >=10 markets) | 19 |
+| t-stat needed to clear luck | 3.7 |
+| best t observed | 2.81 |
+| best edge observed | 11.65 c/share |
+| **wallets clearing the bar** | **0** |
 
 ## Persistence (the decisive test)
 
-- `verdict`: only 1 wallets active in both periods; too few to conclude anything
-- `n_selected`: 1
-
-## Copy economics
-
-- `leader_edge_cents`: 54.34
-- `slippage_cents`: 2.93
-- `net_edge_cents`: 51.41
-- `edge_retained_pct`: 94.6
-- `breakeven_leader_edge_cents`: 2.93
-- `return_per_trade_pct`: 102.82
-- `copies_landed_per_year`: 110
-- `stake_per_trade_usd`: 1250
-- `est_annual_return_pct`: 565.5
-- `capacity_usd_per_trade`: 2500
-- `verdict`: copying retains a usable share of the edge
+- `verdict`: too few wallets active in both periods
+- `n_selected`: 0
 
 ## How to read this
 

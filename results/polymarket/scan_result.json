@@ -1,10 +1,12 @@
 {
-  "generated_at": "2026-08-06 09:37 UTC",
+  "generated_at": "2026-08-06 10:52 UTC",
   "args": {
-    "markets": 200,
+    "markets": 300,
     "market_pool": 3000,
     "min_volume": 5000.0,
     "min_trades": 20,
+    "min_markets": 10,
+    "max_wallets": 400,
     "top_frac": 0.1,
     "seed": 0,
     "rate_limit": 0.25,
@@ -19,64 +21,56 @@
     "n_markets_sampled": 44,
     "n_markets_fetched": 44,
     "n_raw_trades": 40458,
-    "n_wallets_discovered": 6025,
+    "n_wallets_discovered": 400,
     "failures": 0,
+    "n_candidates": 6025,
+    "n_fetched": 400,
+    "n_wallets_examined": 400,
+    "fetch_failures": 0,
     "mode": "live"
   },
-  "verdict": "NO. 11 wallet(s) cleared the luck bar but past performance does NOT predict future performance -- consistent with those wallets having been lucky.",
-  "n_wallets_scanned": 6025,
-  "n_scored": 313,
-  "t_needed": 4.32,
-  "best_t": 124.5,
-  "best_edge_cents": 54.34,
-  "n_clearing_luck": 11,
+  "verdict": "NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.",
+  "n_wallets_scanned": 400,
+  "n_scored": 19,
+  "t_needed": 3.7,
+  "best_t": 2.81,
+  "best_edge_cents": 11.65,
+  "n_clearing_luck": 0,
   "persistence": {
-    "verdict": "only 1 wallets active in both periods; too few to conclude anything",
-    "n_selected": 1
+    "verdict": "too few wallets active in both periods",
+    "n_selected": 0
   },
   "bias": [
     {
-      "wallet": "0x4b1cccc0f7074abcb74d599d39689a9d53579c62",
-      "overall_edge": 0.5434,
-      "extreme_band_stake": 0.0,
+      "wallet": "0x0c553757831b5ea0fb8b45f95a44e16ceeb29e26",
+      "overall_edge": 0.1165,
+      "extreme_band_stake": 0.808,
+      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
+    },
+    {
+      "wallet": "0xeb6789ca6b1425ff908a69a2a5469c38532cd696",
+      "overall_edge": 0.0836,
+      "extreme_band_stake": 0.391,
       "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     },
     {
-      "wallet": "0x5a4074a7e688892779cb0ca392f3508ac0764093",
-      "overall_edge": 0.2574,
-      "extreme_band_stake": 0.016,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+      "wallet": "0x3e27b4fc18d61173110f6edb21e107bc34819890",
+      "overall_edge": 0.0254,
+      "extreme_band_stake": 0.936,
+      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
     },
     {
-      "wallet": "0x3a91db8a99965f32f98e65b93da07d1368b5ac8f",
-      "overall_edge": 0.2459,
-      "extreme_band_stake": 0.053,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+      "wallet": "0x1c22d715475436165f741dc131812557d97bbf5a",
+      "overall_edge": 0.0248,
+      "extreme_band_stake": 0.927,
+      "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
     },
     {
-      "wallet": "0x11a2cf80471364c57d1ebd1711d36142f311b4e5",
-      "overall_edge": 0.2344,
-      "extreme_band_stake": 0.366,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
-    {
-      "wallet": "0x5c9564d4a743641af0ddb0fbeb268592c85a30cb",
-      "overall_edge": 0.2021,
-      "extreme_band_stake": 0.198,
+      "wallet": "0x8fda9114900646989afb222022a832ee632b3fd7",
+      "overall_edge": 0.02,
+      "extreme_band_stake": 0.117,
       "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     }
   ],
-  "economics": {
-    "leader_edge_cents": 54.34,
-    "slippage_cents": 2.93,
-    "net_edge_cents": 51.41,
-    "edge_retained_pct": 94.6,
-    "breakeven_leader_edge_cents": 2.93,
-    "return_per_trade_pct": 102.82,
-    "copies_landed_per_year": 110,
-    "stake_per_trade_usd": 1250,
-    "est_annual_return_pct": 565.5,
-    "capacity_usd_per_trade": 2500,
-    "verdict": "copying retains a usable share of the edge"
-  }
+  "economics": null
 }
