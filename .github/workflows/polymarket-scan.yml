@@ -1,0 +1,123 @@
+name: Polymarket wallet scan
+
+# Answers one question: do wallets exist on Polymarket whose edge is large
+# enough to be told apart from the luckiest trader in a population of thousands?
+#
+# Runs unattended and commits a readable report to results/polymarket/.
+# Trigger it from the Actions tab ("Run workflow"), or let the weekly schedule
+# pick it up.
+
+on:
+  workflow_dispatch:
+    inputs:
+      markets:
+        description: "Markets to sample for wallet discovery (start ~200)"
+        required: false
+        default: "200"
+      min_volume:
+        description: "Minimum market volume in USD"
+        required: false
+        default: "5000"
+      min_trades:
+        description: "Minimum resolved trades for a wallet to be scored"
+        required: false
+        default: "20"
+      seed:
+        description: "Sampling seed (change it to draw a different sample)"
+        required: false
+        default: "0"
+  schedule:
+    # Sundays 06:00 UTC. Cheap, and the population grows over time.
+    - cron: "0 6 * * 0"
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330        # under the 6h ceiling, with room to spare
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet pandas numpy
+
+      # Runs FIRST and on every trigger. If the live scan later fails, this
+      # says whether the analysis code broke or only the API shape drifted --
+      # the distinction that decides what to fix.
+      - name: Self-test the analysis on known ground truth
+        run: |
+          python tests/test_polymarket.py
+          python scripts/polymarket_scan.py --offline \
+            --out results/polymarket/_selftest
+
+      - name: Cache Polymarket responses
+        uses: actions/cache@v4
+        with:
+          path: /tmp/pm_cache
+          key: pm-cache-${{ github.run_id }}
+          restore-keys: pm-cache-
+
+      - name: Live scan
+        id: scan
+        continue-on-error: true    # a failed scan must still publish its report
+        run: |
+          python scripts/polymarket_scan.py \
+            --markets "${{ github.event.inputs.markets || 200 }}" \
+            --min-volume "${{ github.event.inputs.min_volume || 5000 }}" \
+            --min-trades "${{ github.event.inputs.min_trades || 20 }}" \
+            --seed "${{ github.event.inputs.seed || 0 }}" \
+            --cache /tmp/pm_cache \
+            --out results/polymarket
+
+      - name: Publish the report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A results/
+          if git diff --staged --quiet; then
+            echo "no changes to commit"
+          else
+            git commit -m "Polymarket scan results ($(date -u +%Y-%m-%d))
+
+          Automated run of scripts/polymarket_scan.py.
+          See results/polymarket/REPORT.md for the verdict."
+            for i in 1 2 3; do
+              git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              sleep $((i * 5))
+            done
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: polymarket-scan
+          path: results/polymarket/
+          retention-days: 30
+
+      - name: Surface the verdict in the job summary
+        if: always()
+        run: |
+          {
+            echo "## Polymarket wallet scan"
+            echo
+            if [ -f results/polymarket/REPORT.md ]; then
+              cat results/polymarket/REPORT.md
+            else
+              echo "No report was produced — check the Live scan step's logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the job if the live scan failed
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "The live scan failed. The self-test above tells you whether"
+          echo "the analysis code broke or the API shape drifted."
+          exit 1
