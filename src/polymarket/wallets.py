@@ -595,3 +595,76 @@ def bias_attribution(trades: pd.DataFrame, wallet: str) -> dict:
                     "edge is spread across price bands -- not obviously a "
                     "bias-harvesting rule"),
     }
+
+
+def wallet_out_of_sample(trades: pd.DataFrame, wallet: str,
+                         split_on: str = "resolved_at",
+                         min_markets_each: int = 10) -> dict:
+    """
+    Split ONE wallet's own record in half by resolution time and compare.
+
+    `persistence_test` is cross-sectional: it ranks a population on period A
+    and measures the selected group in period B. Handed a single named wallet
+    it has nothing to rank, returns "too few wallets", and the surrounding
+    verdict logic then reads that non-answer as a failure -- which is how a
+    t-statistic of 10.19 came to be reported under the headline "consistent
+    with those wallets having been lucky".
+
+    For one account the equivalent question is answerable and much simpler:
+    was the edge there in the first half of its history as well as the second?
+    A record whose entire edge sits in one half is a hot streak. One that pays
+    in both halves is at least consistent with a repeatable process -- still
+    not proof, because both halves share the same market regime and the same
+    trader, but it is the test that a single wallet can actually support.
+
+    Splitting on resolution time rather than trade time, for the same reason
+    `persistence_test` does: a trade entered in the first half on a market that
+    settles in the second belongs to the second.
+    """
+    t = normalise_trades(trades)
+    t = t[(t["wallet"] == wallet) & t["eff_outcome"].notna()]
+    if t.empty:
+        return {"verdict": "no resolved trades for this wallet"}
+    if split_on not in t.columns:
+        raise ValueError(f"{split_on!r} not in trades; have {list(t.columns)}")
+
+    # Split so each half holds about half the MARKETS, not half the fills --
+    # fills cluster heavily and would put the cut in the wrong place.
+    per_market = t.groupby("market_id")[split_on].min().sort_values()
+    if len(per_market) < 2 * min_markets_each:
+        return {"verdict": f"only {len(per_market)} resolved markets; needs "
+                           f"{2 * min_markets_each} to split",
+                "n_markets": int(len(per_market))}
+    cut = float(per_market.iloc[len(per_market) // 2])
+    early_ids = set(per_market[per_market < cut].index)
+    late_ids = set(per_market[per_market >= cut].index)
+
+    def _half(ids):
+        sub = trades[trades["market_id"].isin(ids) & (trades["wallet"] == wallet)]
+        s = score_wallets(sub, min_trades=1, min_markets=1)
+        if s.empty:
+            return None
+        r = s.iloc[0]
+        return {"n_markets": int(r["n_markets"]), "n_eff": round(float(r["n_eff"]), 1),
+                "edge_per_share": round(float(r["edge_per_share"]), 4),
+                "t_stat": round(float(r["t_stat"]), 2),
+                "roi": round(float(r["roi"]), 4)}
+
+    early, late = _half(early_ids), _half(late_ids)
+    if early is None or late is None:
+        return {"verdict": "one half had no scorable trades"}
+
+    both = early["edge_per_share"] > 0 and late["edge_per_share"] > 0
+    both_sig = early["t_stat"] > 1.64 and late["t_stat"] > 1.64
+    if both_sig:
+        verdict = ("edge is present and significant in BOTH halves of this "
+                   "wallet's own history")
+    elif both:
+        verdict = ("edge is positive in both halves but significant in at most "
+                   "one; suggestive, not established")
+    else:
+        verdict = ("edge appears in only one half -- consistent with a streak "
+                   "rather than a repeatable process")
+    return {"split_ts": cut, "early": early, "late": late,
+            "edge_decay": round(late["edge_per_share"] - early["edge_per_share"], 4),
+            "verdict": verdict}
