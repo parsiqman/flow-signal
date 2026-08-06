@@ -521,6 +521,59 @@ def test_concentrated_edge_surfaces_what_the_market_filter_excludes():
     assert "0xNORMAL" not in set(hits["wallet"])
 
 
+# --- the test a single named wallet can actually support ---------------------
+
+def _one_wallet(n_markets, edge_early, edge_late, seed=3):
+    """One wallet, edge specified separately for each half of its history."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for m in range(n_markets):
+        edge = edge_early if m < n_markets // 2 else edge_late
+        price = 0.5
+        won = float(rng.random() < price + edge)
+        rows.append({"wallet": "0xW", "market_id": m, "timestamp": float(m),
+                     "price": price, "size": 100.0, "side": "BUY",
+                     "outcome": won, "resolved_at": float(m)})
+    return pd.DataFrame(rows)
+
+
+def test_within_wallet_split_catches_an_edge_that_only_existed_early():
+    df = _one_wallet(400, edge_early=0.20, edge_late=0.0)
+    r = wallets.wallet_out_of_sample(df, "0xW")
+    assert r["early"]["edge_per_share"] > 0.1, r
+    assert r["late"]["t_stat"] < 1.64, r
+    assert "streak" in r["verdict"], r
+
+
+def test_within_wallet_split_confirms_an_edge_present_throughout():
+    df = _one_wallet(400, edge_early=0.20, edge_late=0.20)
+    r = wallets.wallet_out_of_sample(df, "0xW")
+    assert r["early"]["t_stat"] > 1.64 and r["late"]["t_stat"] > 1.64, r
+    assert "BOTH" in r["verdict"], r
+
+
+def test_within_wallet_split_refuses_when_there_is_too_little_history():
+    df = _one_wallet(12, edge_early=0.2, edge_late=0.2)
+    r = wallets.wallet_out_of_sample(df, "0xW", min_markets_each=10)
+    assert "needs" in r["verdict"], r
+    assert "early" not in r
+
+
+def test_a_test_that_could_not_run_is_not_a_failed_test():
+    """
+    persistence_test returns 'too few wallets' for a single named account. The
+    verdict logic must not read that as evidence against the wallet -- doing so
+    filed a t-statistic of 10.19 under 'consistent with having been lucky'.
+    """
+    import inspect
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "scripts" / "polymarket_scan.py"
+    text = src.read_text()
+    assert "could NOT be run" in text
+    assert "ran = gap_t is not None" in text
+    del inspect
+
+
 # --- lookup by id (the bug that faked a null result) -------------------------
 
 class _IgnoresTheFilter:

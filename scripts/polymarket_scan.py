@@ -417,6 +417,24 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
     for k, v in pers.items():
         log(f"  {k:26} {v}")
 
+    # The cross-sectional test needs a population to rank. With one named
+    # wallet it has nothing to work with and says so -- and the verdict logic
+    # below used to read that non-answer as a failed test, which is how a
+    # t-statistic of 10.19 got filed under "consistent with having been lucky".
+    # A single account still has an out-of-sample test: its own two halves.
+    oos = {}
+    if len(scored) <= 3:
+        section("5a. WITHIN-WALLET SPLIT (the test one account can support)")
+        for w in scored["wallet"]:
+            try:
+                r = wallets.wallet_out_of_sample(trades, w)
+            except Exception as e:                           # noqa: BLE001
+                r = {"verdict": f"within-wallet split failed: {e}"}
+            oos[w] = r
+            log(f"  {w[:14]}...")
+            for k, v in r.items():
+                log(f"    {k:22} {v}")
+
     section("5b. PER-CATEGORY SCORING (finds specialists a uniform scan misses)")
     by_cat = pd.DataFrame()
     if "category" in trades.columns:
@@ -480,7 +498,27 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
     gap_t = pers.get("gap_t_stat")
     persists = bool(gap_t is not None and np.isfinite(gap_t) and gap_t > 2.0
                     and pers.get("gap", 0) > 0)
-    if n_clear == 0 and not persists:
+    # Distinguish "the test ran and failed" from "the test could not run".
+    # Only the first is evidence, and conflating them manufactures a negative.
+    ran = gap_t is not None and np.isfinite(gap_t)
+    if not ran:
+        halves_ok = [r for r in oos.values()
+                     if r.get("early", {}).get("edge_per_share", 0) > 0
+                     and r.get("late", {}).get("edge_per_share", 0) > 0]
+        if n_clear and halves_ok:
+            verdict = (f"MAYBE. {n_clear} wallet(s) clear the luck bar, and the "
+                       f"edge is positive in both halves of their own history. "
+                       f"The cross-sectional persistence test could NOT be run "
+                       f"(too few wallets) -- this is weaker evidence than it "
+                       f"looks. Check bias attribution before building anything.")
+        elif n_clear:
+            verdict = (f"INCONCLUSIVE. {n_clear} wallet(s) clear the luck bar, "
+                       f"but no out-of-sample test could be run on this sample. "
+                       f"Nothing here has been shown to repeat.")
+        else:
+            verdict = ("NO. Nothing clears the luck bar, and no out-of-sample "
+                       "test could be run on this sample.")
+    elif n_clear == 0 and not persists:
         verdict = ("NO. No wallet is distinguishable from the luckiest of the "
                    "population, and past performance does not predict future "
                    "performance. There is nothing here safe to copy.")
@@ -518,6 +556,7 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
         "best_edge_cents": round(float(ranked["edge_per_share"].max() * 100), 2),
         "n_clearing_luck": n_clear,
         "persistence": pers,
+        "within_wallet_split": oos,
         "bias": bias,
         "economics": econ,
         "n_category_clearing": int(by_cat["clears_luck"].sum()) if len(by_cat) else 0,
@@ -569,6 +608,15 @@ def write_report(report: dict, meta: dict, args, out: Path) -> None:
     ]
     for k, v in (report.get("persistence") or {}).items():
         lines.append(f"- `{k}`: {v}")
+    for w, r in (report.get("within_wallet_split") or {}).items():
+        lines += ["", f"### Within-wallet split — `{w}`", ""]
+        for k, v in r.items():
+            lines.append(f"- `{k}`: {v}")
+    for b in (report.get("bias") or []):
+        lines += ["", f"### Bias attribution — `{b.get('wallet', '')}`", ""]
+        for k, v in b.items():
+            if k != "wallet":
+                lines.append(f"- `{k}`: {v}")
     if report.get("economics"):
         lines += ["", "## Copy economics", ""]
         for k, v in report["economics"].items():
