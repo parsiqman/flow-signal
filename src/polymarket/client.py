@@ -448,6 +448,38 @@ def discover_population(client: PolymarketClient, markets: pd.DataFrame,
     return raw_trades, meta
 
 
+def markets_by_condition_ids(client: "PolymarketClient",
+                             condition_ids: list[str],
+                             batch: int = 20) -> pd.DataFrame:
+    """
+    Look up resolution data for SPECIFIC markets, by condition id.
+
+    Named-wallet mode needs this. Matching one wallet's fills against a generic
+    pool of recent markets fails whenever that wallet trades a niche corner --
+    and a weather specialist trading daily temperature markets is exactly that
+    case. The first named run fetched the account successfully and scored zero
+    trades, because none of its markets were in a pool built from the most
+    recent few thousand closed markets.
+
+    Fetching by id inverts the dependency: take the markets the wallet actually
+    traded, then resolve those. No pool depth required.
+    """
+    ids = [c for c in dict.fromkeys(condition_ids) if isinstance(c, str) and c]
+    rows = []
+    for i in range(0, len(ids), batch):
+        chunk = ids[i:i + batch]
+        for params in ({"condition_ids": ",".join(chunk)},
+                       {"conditionIds": ",".join(chunk)}):
+            try:
+                payload = client._get(f"{GAMMA}/markets", params)
+            except Exception:                                # noqa: BLE001
+                continue
+            if isinstance(payload, list) and payload:
+                rows.extend(payload)
+                break
+    return _markets_to_frame(rows)
+
+
 def resolve_username(client: "PolymarketClient", name: str) -> list[str]:
     """
     Map a Polymarket display name to candidate wallet addresses.

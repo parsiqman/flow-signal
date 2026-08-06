@@ -297,14 +297,9 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
     cfg = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
     api = client.PolymarketClient(cfg)
 
-    markets = api.resolved_markets(limit=args.market_pool,
-                                   min_volume=0.0)
-    resolved = markets[markets["winning_index"].notna()]
-    log(f"\n{len(resolved):,} resolved markets available to match trades against")
-    if resolved.empty:
-        raise RuntimeError("no resolved markets; cannot score anything")
-    resolved = client.label_categories(resolved)
-
+    # Fetch the trades FIRST, then resolve exactly the markets they touched.
+    # Matching a specialist's fills against a generic pool of recent markets
+    # fails completely -- the first named run scored zero trades that way.
     frames = []
     for a in addrs:
         raw = api.user_trades(a, limit=20_000)
@@ -313,9 +308,26 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
             frames.append(pd.DataFrame(raw))
     if not frames:
         raise RuntimeError("no trades returned for any named wallet")
+    raw_all = pd.concat(frames, ignore_index=True)
 
-    trades = client.normalise_trades(pd.concat(frames, ignore_index=True),
-                                     resolved)
+    fields = client.resolve_fields(raw_all, client.TRADE_FIELD_CANDIDATES,
+                                   ("market_id",), "named-wallet trades")
+    cond_ids = raw_all[fields["market_id"]].astype(str).unique().tolist()
+    log(f"\n{len(cond_ids):,} distinct markets touched; resolving them by id")
+
+    resolved = client.markets_by_condition_ids(api, cond_ids)
+    log(f"  {len(resolved):,} markets returned")
+    resolved = resolved[resolved["winning_index"].notna()]
+    log(f"  {len(resolved):,} with a determinable outcome")
+    if resolved.empty:
+        raise RuntimeError(
+            "none of this wallet's markets could be resolved by condition id; "
+            "check the markets-by-id lookup in client.markets_by_condition_ids")
+    resolved = client.label_categories(resolved)
+    log("\ncategories:")
+    log(resolved["category"].value_counts().to_string())
+
+    trades = client.normalise_trades(raw_all, resolved)
     trades = trades.merge(resolved[["market_id", "category"]].drop_duplicates(),
                           on="market_id", how="left")
     trades["category"] = trades["category"].fillna("other")
