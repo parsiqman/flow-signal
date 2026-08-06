@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-08-06 09:36 UTC",
+  "args": {
+    "markets": 200,
+    "market_pool": 3000,
+    "min_volume": 5000.0,
+    "min_trades": 20,
+    "top_frac": 0.1,
+    "seed": 0,
+    "rate_limit": 0.25,
+    "cache": "/tmp/pm_cache",
+    "out": "results/polymarket/_selftest",
+    "offline": true,
+    "offline_wallets": 1200,
+    "offline_skilled": 0.05,
+    "offline_edge": 0.15
+  },
+  "meta": {
+    "n_wallets_discovered": 1200,
+    "mode": "offline",
+    "n_truly_skilled": 60
+  },
+  "verdict": "MAYBE. 20 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.",
+  "n_wallets_scanned": 1200,
+  "n_scored": 1200,
+  "t_needed": 3.96,
+  "best_t": 5.65,
+  "best_edge_cents": 32.7,
+  "n_clearing_luck": 20,
+  "persistence": {
+    "n_wallets_both_periods": 1200,
+    "n_selected": 120,
+    "selected_oos_edge": 0.0691,
+    "everyone_else_oos_edge": 0.0026,
+    "gap": 0.0664,
+    "gap_t_stat": 6.34,
+    "rank_correlation": 0.0693,
+    "verdict": "past performance predicts future performance"
+  },
+  "bias": [
+    {
+      "wallet": "0x00000000000000000000000000000000000000c2",
+      "overall_edge": 0.327,
+      "extreme_band_stake": 0.181,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x00000000000000000000000000000000000000f9",
+      "overall_edge": 0.2503,
+      "extreme_band_stake": 0.093,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x00000000000000000000000000000000000001f2",
+      "overall_edge": 0.2503,
+      "extreme_band_stake": 0.058,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x000000000000000000000000000000000000025e",
+      "overall_edge": 0.249,
+      "extreme_band_stake": 0.11,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x00000000000000000000000000000000000004a2",
+      "overall_edge": 0.2313,
+      "extreme_band_stake": 0.176,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    }
+  ],
+  "economics": {
+    "leader_edge_cents": 32.7,
+    "slippage_cents": 2.93,
+    "net_edge_cents": 29.77,
+    "edge_retained_pct": 91.0,
+    "breakeven_leader_edge_cents": 2.93,
+    "return_per_trade_pct": 59.54,
+    "copies_landed_per_year": 110,
+    "stake_per_trade_usd": 1250,
+    "est_annual_return_pct": 327.5,
+    "capacity_usd_per_trade": 2500,
+    "verdict": "copying retains a usable share of the edge"
+  }
+}
