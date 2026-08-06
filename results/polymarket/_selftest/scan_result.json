@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06 23:27 UTC",
+  "generated_at": "2026-08-06 23:38 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -29,6 +29,7 @@
   },
   "market_pool": {},
   "verdict": "MAYBE. 6 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.",
+  "fill_coverage": null,
   "n_wallets_scanned": 1200,
   "n_scored": 1200,
   "t_needed": 3.96,
