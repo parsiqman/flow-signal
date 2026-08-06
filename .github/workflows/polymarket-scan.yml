@@ -42,6 +42,10 @@ on:
         description: "Addresses or usernames to evaluate directly (blank = search)"
         required: false
         default: ""
+      probe:
+        description: "Probe API endpoints for this username and report shapes"
+        required: false
+        default: ""
   schedule:
     # Sundays 06:00 UTC. Cheap, and the population grows over time.
     - cron: "0 6 * * 0"
@@ -85,7 +89,9 @@ jobs:
         continue-on-error: true    # a failed scan must still publish its report
         run: |
           EXTRA=""
-          if [ -n "${{ github.event.inputs.wallets }}" ]; then
+          if [ -n "${{ github.event.inputs.probe }}" ]; then
+            EXTRA="--probe ${{ github.event.inputs.probe }}"
+          elif [ -n "${{ github.event.inputs.wallets }}" ]; then
             EXTRA="--wallets ${{ github.event.inputs.wallets }}"
           elif [ "${{ github.event.inputs.stratified || 'true' }}" = "true" ]; then
             EXTRA="--stratified --per-category ${{ github.event.inputs.per_category || 120 }}"
