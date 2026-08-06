@@ -452,38 +452,59 @@ def resolve_username(client: "PolymarketClient", name: str) -> list[str]:
     """
     Map a Polymarket display name to candidate wallet addresses.
 
-    Needed because accounts get discussed by username, never by address. This
-    is a lookup, not a selection rule: it resolves an identifier someone else
-    supplied and does not rank anybody by profit.
+    Needed because accounts are discussed by username and never by address.
+    Tries the leaderboard surfaces, since those are the only public endpoints
+    that carry name-to-address pairs; there is no documented username search.
 
-    That distinction matters but does not make the result unbiased. An account
-    surfaced because a post celebrated its win rate carries inherited selection
-    -- somebody searched, you got the winner, and you did not see the size of
-    their search. `--wallets` reports both the pre-specified and the
-    inherited-search bar for exactly this reason.
+    A note on using the leaderboard here, given `discover_by_leaderboard`
+    deliberately raises. The difference is what it is used FOR. Seeding a
+    candidate population from the leaderboard selects on the outcome variable
+    and corrupts everything downstream. Resolving one identifier that someone
+    already named is a lookup, and it ranks nobody.
+
+    It is still not unbiased, and the distinction is worth keeping sharp: an
+    account reaches you because somebody celebrated its record, so you inherit
+    their selection without seeing its size. That is exactly why named-wallet
+    mode reports both the pre-specified bar and the inherited-search bar.
     """
-    import urllib.parse
-    out: list[str] = []
-    attempts = [
-        (f"{DATA}/profile", {"name": name}),
+    endpoints = [
+        ("https://lb-api.polymarket.com/leaderboard",
+         {"window": "all", "limit": 1000, "orderBy": "profit"}),
+        ("https://lb-api.polymarket.com/leaderboard",
+         {"window": "all", "limit": 1000, "orderBy": "profit",
+          "category": "weather"}),
+        ("https://lb-api.polymarket.com/leaderboard",
+         {"window": "all", "limit": 1000}),
+        (f"{GAMMA}/leaderboard", {"window": "all", "limit": 1000}),
+        (f"{DATA}/leaderboard", {"window": "all", "limit": 1000}),
+        (f"{GAMMA}/public-profile", {"name": name}),
         (f"{GAMMA}/profiles", {"name": name}),
-        (f"{DATA}/leaderboard", {"window": "all", "limit": 500}),
     ]
-    for url, params in attempts:
+    target = name.strip().lower()
+    out: list[str] = []
+    for url, params in endpoints:
         try:
             payload = client._get(url, params)
         except Exception:                                    # noqa: BLE001
             continue
         rows = payload if isinstance(payload, list) else [payload]
+        # Some responses nest the list one level down.
+        if len(rows) == 1 and isinstance(rows[0], dict):
+            for key in ("leaderboard", "data", "results", "traders", "users"):
+                v = rows[0].get(key)
+                if isinstance(v, list):
+                    rows = v
+                    break
         for r in rows:
             if not isinstance(r, dict):
                 continue
             label = " ".join(str(r.get(k, "")) for k in
-                             ("name", "displayName", "username", "pseudonym"))
-            if name.lower() not in label.lower():
+                             ("name", "displayName", "username", "pseudonym",
+                              "handle")).lower()
+            if target not in label:
                 continue
             for k in ("proxyWallet", "proxy_wallet", "wallet", "address",
-                      "user", "userAddress"):
+                      "user", "userAddress", "walletAddress"):
                 v = r.get(k)
                 if isinstance(v, str) and v.startswith("0x") and len(v) >= 40:
                     out.append(v.lower())
