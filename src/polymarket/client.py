@@ -467,18 +467,15 @@ def resolve_username(client: "PolymarketClient", name: str) -> list[str]:
     their selection without seeing its size. That is exactly why named-wallet
     mode reports both the pre-specified bar and the inherited-search bar.
     """
+    # The working endpoint, found by probing rather than guessing. The
+    # `search_profiles=true` flag is the whole trick: without it the same URL
+    # answers 200 with an empty pagination object and nothing else, which reads
+    # exactly like "no such user" rather than "you did not ask for profiles".
     endpoints = [
-        ("https://lb-api.polymarket.com/leaderboard",
-         {"window": "all", "limit": 1000, "orderBy": "profit"}),
-        ("https://lb-api.polymarket.com/leaderboard",
-         {"window": "all", "limit": 1000, "orderBy": "profit",
-          "category": "weather"}),
-        ("https://lb-api.polymarket.com/leaderboard",
-         {"window": "all", "limit": 1000}),
-        (f"{GAMMA}/leaderboard", {"window": "all", "limit": 1000}),
-        (f"{DATA}/leaderboard", {"window": "all", "limit": 1000}),
-        (f"{GAMMA}/public-profile", {"name": name}),
-        (f"{GAMMA}/profiles", {"name": name}),
+        (f"{GAMMA}/public-search", {"q": name, "search_profiles": "true"}),
+        (f"{GAMMA}/public-search", {"q": name, "search_profiles": "true",
+                                    "events_status": "all",
+                                    "limit_per_type": 20}),
     ]
     target = name.strip().lower()
     out: list[str] = []
@@ -488,9 +485,9 @@ def resolve_username(client: "PolymarketClient", name: str) -> list[str]:
         except Exception:                                    # noqa: BLE001
             continue
         rows = payload if isinstance(payload, list) else [payload]
-        # Some responses nest the list one level down.
+        # The profile list is nested under a key, not returned at the top level.
         if len(rows) == 1 and isinstance(rows[0], dict):
-            for key in ("leaderboard", "data", "results", "traders", "users"):
+            for key in ("profiles", "leaderboard", "data", "results", "users"):
                 v = rows[0].get(key)
                 if isinstance(v, list):
                     rows = v
