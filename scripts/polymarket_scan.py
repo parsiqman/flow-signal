@@ -313,12 +313,25 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
     fields = client.resolve_fields(raw_all, client.TRADE_FIELD_CANDIDATES,
                                    ("market_id",), "named-wallet trades")
     cond_ids = raw_all[fields["market_id"]].astype(str).unique().tolist()
-    log(f"\n{len(cond_ids):,} distinct markets touched; resolving them by id")
 
+    # What the wallet actually trades, straight from the fills. This is the
+    # cross-check on the market lookup: if these say "highest temperature in
+    # NYC" and the resolved markets come back filed under politics, the join is
+    # wrong, and without this line that shows up only as an empty result.
+    title_col = next((c for c in ("title", "slug", "eventSlug", "question")
+                      if c in raw_all.columns), None)
+    if title_col:
+        log("\nwhat this wallet trades (from the fills themselves):")
+        for t in raw_all[title_col].dropna().astype(str).unique()[:6]:
+            log(f"  - {t[:90]}")
+
+    log(f"\n{len(cond_ids):,} distinct markets touched; resolving them by id")
     resolved = client.markets_by_condition_ids(api, cond_ids)
-    log(f"  {len(resolved):,} markets returned")
+    log(f"  lookup form used         : {resolved.attrs.get('lookup_form', '?')}")
+    log(f"  ids requested            : {resolved.attrs.get('n_requested', '?'):,}")
+    log(f"  markets matched by id    : {len(resolved):,}")
     resolved = resolved[resolved["winning_index"].notna()]
-    log(f"  {len(resolved):,} with a determinable outcome")
+    log(f"  with a determinable outcome: {len(resolved):,}")
     if resolved.empty:
         raise RuntimeError(
             "none of this wallet's markets could be resolved by condition id; "
@@ -331,7 +344,13 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
     trades = trades.merge(resolved[["market_id", "category"]].drop_duplicates(),
                           on="market_id", how="left")
     trades["category"] = trades["category"].fillna("other")
-    log(f"\n{len(trades):,} fills matched to resolved markets")
+    log(f"\n{len(trades):,} fills matched to resolved markets "
+        f"({len(trades) / max(len(raw_all), 1):.0%} of raw)")
+    if trades.empty:
+        raise RuntimeError(
+            f"{len(raw_all):,} fills, {len(resolved):,} resolved markets, and "
+            f"zero of them joined. The condition-id lookup returned markets "
+            f"this wallet never traded. Do NOT read this as 'no edge'.")
     if len(trades):
         log(f"distinct markets: {trades['market_id'].nunique():,}")
         log("\nUnmatched fills are dropped silently by the join, so a low match")
