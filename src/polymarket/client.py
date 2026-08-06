@@ -183,21 +183,30 @@ class PolymarketClient:
         does not bias the wallet population -- every wallet active in a
         surviving market is still kept regardless of performance.
         """
-        rows, offset = [], 0
-        while len(rows) < limit:
+        rows, offset, empty_pages = [], 0, 0
+        # Page well past `limit`: most closed markets carry no determinable
+        # outcome, so the resolved pool is a small fraction of what is fetched.
+        hard_cap = max(limit * 8, 8000)
+        while len(rows) < hard_cap:
             batch = self._get(f"{GAMMA}/markets", {
                 "closed": "true", "limit": self.cfg.page_size, "offset": offset,
                 "order": "endDate", "ascending": "false"})
             if not batch:
-                break
-            rows.extend(batch)
+                empty_pages += 1
+                if empty_pages >= 2:
+                    break
+            else:
+                empty_pages = 0
+                rows.extend(batch)
             offset += self.cfg.page_size
-            if len(batch) < self.cfg.page_size:
-                break
         df = _markets_to_frame(rows)
+        attrs = dict(df.attrs)
         if min_volume:
             df = df[df["volume"].fillna(0) >= min_volume]
-        return df.head(limit).reset_index(drop=True)
+        out = df.head(limit).reset_index(drop=True)
+        out.attrs.update(attrs)
+        out.attrs["n_after_volume"] = len(df)
+        return out
 
     def market_trades(self, market_id: str, limit: int = 5000) -> list[dict]:
         """Every trade in one market. This is the unbiased discovery unit."""
@@ -563,10 +572,26 @@ def _markets_to_frame(rows: Iterable[dict]) -> pd.DataFrame:
                 prices = None
         win = None
         if isinstance(prices, (list, tuple)) and len(prices) >= 2:
-            vals = [float(p) for p in prices]
-            # A resolved binary market prices its outcomes at exactly 1 and 0.
-            if max(vals) > 0.99 and min(vals) < 0.01:
+            try:
+                vals = [float(p) for p in prices]
+            except (TypeError, ValueError):
+                vals = []
+            # Tolerance matters more than it looks. Demanding exactly 1.0/0.0
+            # rejected almost every market: three live runs sampled 44, then 8,
+            # markets out of a requested 200, and every downstream symptom --
+            # too few scorable wallets, a persistence test that never ran --
+            # traced back to here. Resolved markets round, get stored as
+            # strings, and occasionally settle at 0.995.
+            if len(vals) >= 2 and max(vals) >= 0.95 and min(vals) <= 0.05:
                 win = int(np.argmax(vals))
+        if win is None:
+            # Fallbacks for sources that report resolution separately from price.
+            for key in ("umaResolutionStatus", "resolutionStatus", "winner",
+                        "resolvedOutcome"):
+                v = r.get(key)
+                if isinstance(v, str) and v.strip().lower() in ("yes", "no"):
+                    win = 0 if v.strip().lower() == "yes" else 1
+                    break
         end = r.get(f.get("end_date", "endDate"))
         raw_cat = r.get(f.get("category", "category"))
         if isinstance(raw_cat, (list, tuple)):
@@ -584,7 +609,19 @@ def _markets_to_frame(rows: Iterable[dict]) -> pd.DataFrame:
                                     errors="coerce"),
         })
     df = pd.DataFrame(recs)
-    return df[df["market_id"] != ""]
+    df = df[df["market_id"] != ""]
+    # Diagnostics for unattended runs: how many markets survive each stage, and
+    # what the raw resolution field actually looked like. Without this a thin
+    # pool is invisible and every downstream number is quietly starved.
+    df.attrs["n_raw"] = len(rows)
+    df.attrs["n_with_winner"] = int(df["winning_index"].notna().sum())
+    sample = []
+    for r in rows[:400]:
+        v = r.get(f.get("outcome_prices", "outcomePrices"))
+        if v is not None:
+            sample.append(str(v)[:40])
+    df.attrs["outcome_price_samples"] = sample[:8]
+    return df
 
 
 def sample_response_shapes() -> dict:

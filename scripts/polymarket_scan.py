@@ -69,8 +69,18 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     if markets.empty:
         raise RuntimeError("no resolved markets returned; check the Gamma API")
     log(f"field mapping: {client.MARKET_FIELDS}")
+    a = markets.attrs
+    log(f"  raw markets fetched      : {a.get('n_raw', '?'):,}"
+        if isinstance(a.get('n_raw'), int) else f"  raw markets fetched      : ?")
+    log(f"  with a winning outcome   : {a.get('n_with_winner', '?')}")
+    log(f"  after volume filter      : {a.get('n_after_volume', '?')}")
+    log(f"  sample outcomePrices     : {a.get('outcome_price_samples', [])}")
     resolved = markets[markets["winning_index"].notna()]
     log(f"{len(resolved):,} have a determinable winning outcome")
+    if len(resolved) < 50:
+        log("\n  WARNING: the resolved pool is very thin. Every downstream")
+        log("  number is starved by this, not by the wallets. Check the")
+        log("  outcomePrices sample above against _markets_to_frame.")
     if resolved.empty:
         raise RuntimeError(
             "no market has a winning_index. outcomePrices is probably not in "
