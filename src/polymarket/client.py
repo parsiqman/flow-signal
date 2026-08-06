@@ -448,6 +448,50 @@ def discover_population(client: PolymarketClient, markets: pd.DataFrame,
     return raw_trades, meta
 
 
+def resolve_username(client: "PolymarketClient", name: str) -> list[str]:
+    """
+    Map a Polymarket display name to candidate wallet addresses.
+
+    Needed because accounts get discussed by username, never by address. This
+    is a lookup, not a selection rule: it resolves an identifier someone else
+    supplied and does not rank anybody by profit.
+
+    That distinction matters but does not make the result unbiased. An account
+    surfaced because a post celebrated its win rate carries inherited selection
+    -- somebody searched, you got the winner, and you did not see the size of
+    their search. `--wallets` reports both the pre-specified and the
+    inherited-search bar for exactly this reason.
+    """
+    import urllib.parse
+    out: list[str] = []
+    attempts = [
+        (f"{DATA}/profile", {"name": name}),
+        (f"{GAMMA}/profiles", {"name": name}),
+        (f"{DATA}/leaderboard", {"window": "all", "limit": 500}),
+    ]
+    for url, params in attempts:
+        try:
+            payload = client._get(url, params)
+        except Exception:                                    # noqa: BLE001
+            continue
+        rows = payload if isinstance(payload, list) else [payload]
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            label = " ".join(str(r.get(k, "")) for k in
+                             ("name", "displayName", "username", "pseudonym"))
+            if name.lower() not in label.lower():
+                continue
+            for k in ("proxyWallet", "proxy_wallet", "wallet", "address",
+                      "user", "userAddress"):
+                v = r.get(k)
+                if isinstance(v, str) and v.startswith("0x") and len(v) >= 40:
+                    out.append(v.lower())
+        if out:
+            break
+    return sorted(set(out))
+
+
 def fetch_full_histories(client: "PolymarketClient", candidates: list[str],
                          max_wallets: int = 400,
                          activity: dict[str, int] | None = None,
