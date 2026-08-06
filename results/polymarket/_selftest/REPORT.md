@@ -1,4 +1,4 @@
-# Polymarket wallet scan — 2026-08-06 10:30 UTC
+# Polymarket wallet scan — 2026-08-06 11:23 UTC
 
 ## MAYBE. 6 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.
 
@@ -10,7 +10,9 @@
 | t-stat needed to clear luck | 3.96 |
 | best t observed | 4.73 |
 | best edge observed | 25.23 c/share |
-| **wallets clearing the bar** | **6** |
+| **wallets clearing the bar (uniform)** | **6** |
+| **wallet-category pairs clearing (specialists)** | **0** |
+| concentrated-edge wallets surfaced | 0 |
 
 ## Persistence (the decisive test)
 
