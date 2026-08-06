@@ -186,6 +186,25 @@ def probe_endpoints(args) -> int:
 
     name = args.probe
     candidates = [
+        # public-search answered 200 on the first probe but returned only a
+        # pagination key, so the profile results sit behind a parameter we did
+        # not send. lb-api/rank answered 400, meaning the path exists and the
+        # arguments are wrong. Both are worth pushing on rather than replacing.
+        ("https://gamma-api.polymarket.com/public-search",
+         {"q": name, "limit_per_type": 10}),
+        ("https://gamma-api.polymarket.com/public-search",
+         {"q": name, "type": "profile"}),
+        ("https://gamma-api.polymarket.com/public-search",
+         {"q": name, "search_profiles": "true"}),
+        ("https://gamma-api.polymarket.com/public-search",
+         {"q": name, "events_status": "all", "limit_per_type": 20,
+          "search_profiles": "true"}),
+        ("https://lb-api.polymarket.com/rank",
+         {"window": "all", "limit": 50, "rankType": "pnl"}),
+        ("https://lb-api.polymarket.com/rank",
+         {"window": "all", "limit": 50, "orderBy": "pnl", "category": "weather"}),
+        ("https://lb-api.polymarket.com/rank",
+         {"p": 1, "window": "all", "type": "pnl"}),
         ("https://lb-api.polymarket.com/leaderboard",
          {"window": "all", "limit": 50, "orderBy": "profit"}),
         ("https://lb-api.polymarket.com/rank", {"window": "all", "limit": 50}),
@@ -219,6 +238,9 @@ def probe_endpoints(args) -> int:
             log(f"      params {params}")
             log(f"      {shape}")
             log(f"      sample keys: {keys}")
+            # Keys alone were not enough last time: an endpoint answered 200
+            # with a single pagination key and the useful part was elsewhere.
+            log(f"      body[:900]: {body[:900]}")
             if name.lower() in body.lower():
                 log(f"      >>> CONTAINS {name!r} <<<")
                 idx = body.lower().index(name.lower())
