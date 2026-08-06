@@ -29,7 +29,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from polymarket import execution, fixtures, wallets      # noqa: E402
+from polymarket import client, execution, fixtures, wallets   # noqa: E402
 
 
 # --- the fixture must contain what it claims --------------------------------
@@ -267,6 +267,91 @@ def test_identification_bar_exceeds_the_profitability_bar():
     needed_to_identify = wallets.identifiable_edge_cents(10_000, 200)
     assert needed_to_identify > 2 * needed_to_profit, (needed_to_identify,
                                                        needed_to_profit)
+
+
+# --- API client and discovery -----------------------------------------------
+
+def test_leaderboard_seeding_is_refused():
+    """
+    Seeding from the public leaderboard selects on the outcome variable: you
+    would rank traders by past profit inside a set already filtered for past
+    profit. The result looks excellent and means nothing, and nothing in the
+    pipeline appears to fail. Refused in code, not just in a comment.
+    """
+    try:
+        client.discover_by_leaderboard()
+        raise AssertionError("leaderboard seeding must be refused")
+    except NotImplementedError as e:
+        assert "outcome variable" in str(e)
+
+
+def test_resolved_markets_parse_to_a_winning_index():
+    mk = client._markets_to_frame(client.sample_response_shapes()["markets"])
+    assert len(mk) == 1
+    assert mk["winning_index"].iloc[0] == 0
+    assert np.isfinite(mk["resolved_at"].iloc[0])
+
+
+def test_unresolved_markets_carry_no_winner():
+    """A market still trading at 0.6/0.4 has not resolved and must be excluded."""
+    rows = [{"conditionId": "0xopen", "question": "q", "closed": False,
+             "endDate": "2030-01-01T00:00:00Z",
+             "outcomePrices": '["0.6", "0.4"]', "volumeNum": 1000.0}]
+    mk = client._markets_to_frame(rows)
+    assert mk["winning_index"].isna().all()
+
+
+def test_trade_normalisation_scores_both_sides_correctly():
+    shapes = client.sample_response_shapes()
+    raw = pd.DataFrame(shapes["trades"])
+    mk = client._markets_to_frame(shapes["markets"])
+    norm = client.normalise_trades(raw, mk)
+    scored = wallets.normalise_trades(norm)
+    # Wallet 1 bought the winning side at 42c: profit. Wallet 2 sold it: loss.
+    assert scored["profit"].iloc[0] > 0
+    assert scored["profit"].iloc[1] < 0
+
+
+def test_api_shape_drift_fails_loudly():
+    """
+    A silently missing field becomes a NaN column and then a plausible result
+    computed from nothing -- the failure mode that has already produced three
+    confident wrong answers in this project.
+    """
+    shapes = client.sample_response_shapes()
+    raw = pd.DataFrame(shapes["trades"]).drop(columns=["price"])
+    mk = client._markets_to_frame(shapes["markets"])
+    try:
+        client.normalise_trades(raw, mk)
+        raise AssertionError("must refuse a response missing a required field")
+    except ValueError as e:
+        assert "missing" in str(e) and "price" in str(e)
+
+
+def test_normalisation_drops_trades_with_no_resolution():
+    shapes = client.sample_response_shapes()
+    raw = pd.DataFrame(shapes["trades"])
+    raw["conditionId"] = "0xunknown"          # not in the markets frame
+    mk = client._markets_to_frame(shapes["markets"])
+    assert len(client.normalise_trades(raw, mk)) == 0
+
+
+def test_persistence_split_defaults_to_resolution_time():
+    """
+    Splitting on trade time is lookahead: a trade placed in period A on a market
+    resolving in period B has an outcome nobody knew when ranking at the end of
+    A. The default must be resolution time, and a bad column must be refused.
+    """
+    trades, _ = fixtures.generate_wallets(n_wallets=800, skilled_frac=0.2,
+                                          skill_edge=0.15, seed=2,
+                                          trades_per_wallet=(60, 240))
+    r = wallets.persistence_test(trades)          # default = resolved_at
+    assert r["gap_t_stat"] > 2.0
+    try:
+        wallets.persistence_test(trades, split_on="not_a_column")
+        raise AssertionError("must refuse an unknown split column")
+    except ValueError as e:
+        assert "lookahead" in str(e)
 
 
 if __name__ == "__main__":

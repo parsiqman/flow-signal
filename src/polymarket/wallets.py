@@ -269,7 +269,8 @@ def luck_adjusted_ranking(scored: pd.DataFrame,
 # ---------------------------------------------------------------------------
 
 def persistence_test(trades: pd.DataFrame, split_ts: float | None = None,
-                     min_trades_each: int = 15, top_frac: float = 0.10) -> dict:
+                     min_trades_each: int = 15, top_frac: float = 0.10,
+                     split_on: str = "resolved_at") -> dict:
     """
     Rank wallets on the first period, measure them on the second.
 
@@ -279,6 +280,14 @@ def persistence_test(trades: pd.DataFrame, split_ts: float | None = None,
     information about future profit, and no amount of execution engineering
     rescues the idea.
 
+    `split_on='resolved_at'` is the default and matters on real data. Splitting
+    on trade timestamp is lookahead: a trade PLACED in period A on a market that
+    RESOLVES in period B has an outcome nobody could have known when ranking at
+    the end of A. Including it means the ranking is built partly from the
+    future, which is exactly the bias the test exists to rule out. A trade
+    belongs to the period in which its market settled, not the one in which it
+    was entered.
+
     Returns the out-of-sample edge of the selected group, the edge of everyone
     else, and the gap. A gap indistinguishable from zero is a kill signal.
     """
@@ -287,11 +296,17 @@ def persistence_test(trades: pd.DataFrame, split_ts: float | None = None,
     if t.empty:
         return {"verdict": "no resolved trades", "n_selected": 0}
 
+    if split_on not in t.columns:
+        raise ValueError(
+            f"split_on='{split_on}' is not a column. Splitting on trade time "
+            f"instead of resolution time introduces lookahead; if that is "
+            f"genuinely intended, pass split_on='timestamp' explicitly.")
+    key = t[split_on]
     if split_ts is None:
-        split_ts = float(t["timestamp"].quantile(0.5))
+        split_ts = float(key.quantile(0.5))
 
-    early = t[t["timestamp"] <= split_ts]
-    late = t[t["timestamp"] > split_ts]
+    early = t[key <= split_ts]
+    late = t[key > split_ts]
     if early.empty or late.empty:
         return {"verdict": "split produced an empty period", "n_selected": 0}
 

@@ -68,6 +68,10 @@ def generate_wallets(n_wallets: int = 2000,
     e_abs = float(np.mean(np.abs(mispricing)))
     p_correct = float(np.clip(0.5 + skill_edge / (2 * max(e_abs, 1e-9)), 0.5, 0.999))
     outcomes = (rng.random(n_markets) < true_p).astype(int)
+    # Markets settle at different times, and a trade always precedes its own
+    # market's resolution. Without this the resolution-time split has nothing to
+    # split on, and the lookahead guard in persistence_test cannot be exercised.
+    resolve_time = rng.uniform(120.0, 1000.0, n_markets)
 
     n_skilled = int(n_wallets * skilled_frac)
     skilled = set(rng.choice(n_wallets, size=n_skilled, replace=False).tolist())
@@ -92,12 +96,13 @@ def generate_wallets(n_wallets: int = 2000,
             else:
                 side = "BUY" if rng.random() < 0.5 else "SELL"
 
+            rt = float(resolve_time[mkt])
             rows.append({
                 "wallet": wallet, "market_id": int(mkt),
-                "timestamp": float(rng.uniform(0, 1000)),
+                "timestamp": float(rng.uniform(max(0.0, rt - 200.0), rt)),
                 "price": float(p), "size": float(rng.lognormal(4.5, 0.9)),
                 "side": side, "outcome": float(o),
-                "resolved_at": 1000.0,
+                "resolved_at": rt,
             })
 
         truth.append({"wallet": wallet, "is_skilled": is_skilled,

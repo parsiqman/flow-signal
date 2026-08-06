@@ -159,3 +159,35 @@ rate is ~20% of populations, because per-share P&L is bimodal and wallet
 t-statistics have fatter tails than normal. Clearing it is **necessary, not
 sufficient** — the same status as a low PBO in `lab/validation.py`. It is
 documented rather than tuned away.
+
+---
+
+## Building it: Global first
+
+`notebooks/polymarket_wallet_skill.ipynb` (Colab) runs the crawl and answers the
+identification question. Execution and the geo split are deferred deliberately —
+they only matter if a wallet clears the bar.
+
+**The one rule that must not be broken:** wallets are discovered by *market
+participation*, never from the public leaderboard. Leaderboard seeding selects on
+the outcome variable — ranking traders by past profit inside a set already
+filtered for past profit — and produces excellent, meaningless numbers with no
+visible failure anywhere. `client.discover_by_leaderboard()` exists and raises.
+
+**Lookahead guard:** the persistence split is on **resolution time, not trade
+time**. A trade placed in period A on a market resolving in period B has an
+outcome nobody knew when ranking at the end of A. `persistence_test` defaults to
+`split_on='resolved_at'` and refuses an unknown column with an explanation.
+
+**Shape drift:** `validate_trade_fields` fails loudly if the API response no
+longer carries an expected field, rather than letting it become a NaN column and
+then a plausible result computed from nothing.
+
+Read the answer as follows:
+
+| Outcome | What it means |
+|---|---|
+| Nothing clears the luck bar | Complete answer, reached free. Most of what a leaderboard shows is the maximum of thousands of random walks. |
+| Something clears it but does not persist | Same answer. Persistence is the decisive test. |
+| Persists, but concentrated in extreme price bands | Favourite-longshot bias. Build the rule directly; copying is a worse wrapper around the same trade. |
+| Persists and is not bias | Now the geo problem is worth solving — reformulate around Polymarket US. |
