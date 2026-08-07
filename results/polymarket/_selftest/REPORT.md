@@ -1,4 +1,4 @@
-# Polymarket wallet scan — 2026-08-07 01:19 UTC
+# Polymarket wallet scan — 2026-08-07 01:28 UTC
 
 ## MAYBE. 6 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.
 
@@ -54,6 +54,61 @@
 - `overall_edge`: 0.2076
 - `extreme_band_stake`: 0.149
 - `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
+
+### Trade style — `0x0000000000000000000000000000000000000382`
+
+- `n_markets`: 78
+- `both_sides_frac`: 0.0
+- `median_fills_per_market`: 1.0
+- `median_span_hours`: 0.0
+- `extreme_band_stake`: 0.16
+- `avg_size_per_market`: 144.4
+- `style`: position taker
+- `copyable`: COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution.
+
+### Trade style — `0x0000000000000000000000000000000000000145`
+
+- `n_markets`: 90
+- `both_sides_frac`: 0.044
+- `median_fills_per_market`: 1.0
+- `median_span_hours`: 0.0
+- `extreme_band_stake`: 0.199
+- `avg_size_per_market`: 147.7
+- `style`: position taker
+- `copyable`: COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution.
+
+### Trade style — `0x000000000000000000000000000000000000021f`
+
+- `n_markets`: 166
+- `both_sides_frac`: 0.024
+- `median_fills_per_market`: 1.0
+- `median_span_hours`: 0.0
+- `extreme_band_stake`: 0.114
+- `avg_size_per_market`: 170.7
+- `style`: position taker
+- `copyable`: COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution.
+
+### Trade style — `0x00000000000000000000000000000000000000b0`
+
+- `n_markets`: 102
+- `both_sides_frac`: 0.029
+- `median_fills_per_market`: 1.0
+- `median_span_hours`: 0.0
+- `extreme_band_stake`: 0.127
+- `avg_size_per_market`: 154.5
+- `style`: position taker
+- `copyable`: COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution.
+
+### Trade style — `0x0000000000000000000000000000000000000124`
+
+- `n_markets`: 158
+- `both_sides_frac`: 0.025
+- `median_fills_per_market`: 1.0
+- `median_span_hours`: 0.0
+- `extreme_band_stake`: 0.149
+- `avg_size_per_market`: 149.5
+- `style`: position taker
+- `copyable`: COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution.
 
 ## Copy economics
 

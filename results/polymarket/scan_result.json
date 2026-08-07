@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-08-07 01:23 UTC",
+  "generated_at": "2026-08-07 01:30 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
     "min_volume": 5000.0,
-    "min_trades": 20,
+    "min_trades": 15,
     "min_markets": 10,
     "max_wallets": 400,
-    "stratified": true,
-    "per_category": 250,
+    "stratified": false,
+    "per_category": 120,
     "categories": "",
     "top_frac": 0.1,
     "seed": 0,
     "rate_limit": 0.25,
     "cache": "/tmp/pm_cache",
     "out": "results/polymarket",
-    "wallets": "",
+    "wallets": "aaaa298",
     "probe": "",
-    "longshot": true,
+    "longshot": false,
     "half_spread_cents": 1.0,
     "offline": false,
     "offline_wallets": 1200,
@@ -25,83 +25,73 @@
     "offline_edge": 0.15
   },
   "meta": {
-    "by_category": {
-      "other": {
-        "pool": 235,
-        "sampled": 235,
-        "fetched": 235
-      },
-      "crypto": {
-        "pool": 63,
-        "sampled": 63,
-        "fetched": 63
-      },
-      "sports": {
-        "pool": 4,
-        "sampled": 4,
-        "fetched": 4
-      },
-      "econ": {
-        "pool": 8,
-        "sampled": 8,
-        "fetched": 8
-      },
-      "politics": {
-        "pool": 22,
-        "sampled": 22,
-        "fetched": 22
-      },
-      "entertainment": {
-        "pool": 1,
-        "sampled": 1,
-        "fetched": 1
-      }
-    },
-    "n_raw_trades": 586879,
-    "n_wallets_discovered": 48514
-  },
-  "market_pool": {
-    "raw_markets_fetched": 500,
-    "with_winning_outcome": 500,
-    "after_volume_filter": 333,
-    "resolved_pool": 333,
-    "outcome_price_samples": [
-      "[\"0\", \"1\"]",
-      "[\"1\", \"0\"]",
-      "[\"0\", \"1\"]",
-      "[\"0\", \"1\"]",
-      "[\"0\", \"1\"]",
-      "[\"1\", \"0\"]",
-      "[\"0\", \"1\"]",
-      "[\"0\", \"1\"]"
+    "n_wallets_discovered": 1,
+    "mode": "named",
+    "named_wallets": [
+      "0x4ebc2722adc772bde8680792d0a6fdf15499a33d"
     ],
-    "category_pool": {
-      "other": 235,
-      "crypto": 63,
-      "politics": 22,
-      "econ": 8,
-      "sports": 4,
-      "entertainment": 1
+    "n_raw_fills": 10500,
+    "n_markets_touched": 191,
+    "n_markets_resolved": 190,
+    "fill_coverage": 0.9998095238095238,
+    "match_note": "scored only on fills matched to resolved markets"
+  },
+  "market_pool": {},
+  "verdict": "NO. Nothing clears the luck bar, and no out-of-sample test could be run on this sample.",
+  "fill_coverage": 0.9998095238095238,
+  "n_wallets_scanned": 1,
+  "n_scored": 1,
+  "t_needed": 1.64,
+  "best_t": 1.13,
+  "best_edge_cents": 1.35,
+  "n_clearing_luck": 0,
+  "persistence": {
+    "verdict": "only 1 wallets active in both periods; too few to conclude anything",
+    "n_selected": 1
+  },
+  "within_wallet_split": {
+    "0x4ebc2722adc772bde8680792d0a6fdf15499a33d": {
+      "split_ts": 1785715200.0,
+      "early": {
+        "n_markets": 86,
+        "n_eff": 45.4,
+        "edge_per_share": 0.0084,
+        "t_stat": 0.45,
+        "roi": 0.018
+      },
+      "late": {
+        "n_markets": 104,
+        "n_eff": 64.1,
+        "edge_per_share": 0.0179,
+        "t_stat": 1.15,
+        "roi": 0.038
+      },
+      "edge_decay": 0.0095,
+      "verdict": "edge is positive in both halves but significant in at most one; suggestive, not established"
     }
   },
-  "verdict": "NO. No price band shows a bias that survives the multiple-testing bar. There is no rule here to trade.",
-  "longshot": {
-    "split_ts": 1798779600.0,
-    "n_markets_train": 132,
-    "n_markets_test": 201,
-    "rule": "no band cleared the in-sample bar; the rule trades nothing",
-    "bar_used": 2.57,
-    "n_bands_tested": 10,
-    "calibration_train": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05        132    7.2  ... -0.0024  0.0372   -0.07\n1  0.05-0.10         99    9.3  ... -0.0719  0.0328   -2.19\n2  0.10-0.20         81   11.2  ... -0.1168  0.0466   -2.50\n3  0.20-0.35         70   11.3  ... -0.0864  0.1151   -0.75\n4  0.35-0.50         57    5.7  ...  0.0592  0.2091    0.28\n5  0.50-0.65         59    6.4  ... -0.0651  0.1979   -0.33\n6  0.65-0.80         74   11.0  ...  0.0980  0.1116    0.88\n7  0.80-0.90         90   11.0  ...  0.1130  0.0447    2.53\n8  0.90-0.95        105    9.4  ...  0.0709  0.0327    2.17\n9  0.95-1.00        132    7.2  ...  0.0024  0.0372    0.06\n\n[10 rows x 8 columns]",
-    "calibration_test": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05        201   37.0  ...  0.0174  0.0274    0.64\n1  0.05-0.10        182   25.5  ...  0.0020  0.0529    0.04\n2  0.10-0.20        163   29.5  ... -0.0791  0.0467   -1.69\n3  0.20-0.35        148   36.7  ... -0.1068  0.0622   -1.72\n4  0.35-0.50        120   17.4  ... -0.0789  0.1154   -0.68\n5  0.50-0.65        120   22.7  ...  0.0867  0.0993    0.87\n6  0.65-0.80        150   35.9  ...  0.1082  0.0612    1.77\n7  0.80-0.90        165   28.8  ...  0.0814  0.0435    1.87\n8  0.90-0.95        185   21.8  ... -0.0169  0.0602   -0.28\n9  0.95-1.00        201   37.1  ... -0.0165  0.0265   -0.62\n\n[10 rows x 8 columns]",
-    "out_of_sample": {
-      "verdict": "rule is empty; nothing to evaluate",
-      "n_markets": 0
+  "bias": [
+    {
+      "wallet": "0x4ebc2722adc772bde8680792d0a6fdf15499a33d",
+      "overall_edge": 0.0135,
+      "extreme_band_stake": 0.377,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     }
-  },
-  "null": {
-    "verdict": "rule could not be evaluated on the real tape"
-  },
-  "n_wallets_scanned": 48514,
-  "n_scored": 0
+  ],
+  "style": [
+    {
+      "wallet": "0x4ebc2722adc772bde8680792d0a6fdf15499a33d",
+      "n_markets": 190,
+      "both_sides_frac": 0.995,
+      "median_fills_per_market": 45.0,
+      "median_span_hours": 1.034,
+      "extreme_band_stake": 0.377,
+      "avg_size_per_market": 12457.8,
+      "style": "market maker / latency",
+      "copyable": "UNCOPYABLE. The edge is in being first to the book. A copier is by construction the slower side of it."
+    }
+  ],
+  "economics": null,
+  "n_category_clearing": 0,
+  "n_concentrated": 0
 }
