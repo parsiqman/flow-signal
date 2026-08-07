@@ -1,23 +1,26 @@
 {
-  "generated_at": "2026-08-07 01:30 UTC",
+  "generated_at": "2026-08-07 18:28 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
-    "min_volume": 5000.0,
-    "min_trades": 15,
+    "min_volume": 2000.0,
+    "min_trades": 20,
     "min_markets": 10,
     "max_wallets": 400,
-    "stratified": false,
-    "per_category": 120,
+    "stratified": true,
+    "per_category": 400,
     "categories": "",
     "top_frac": 0.1,
     "seed": 0,
     "rate_limit": 0.25,
     "cache": "/tmp/pm_cache",
     "out": "results/polymarket",
-    "wallets": "aaaa298",
+    "wallets": "",
     "probe": "",
-    "longshot": false,
+    "days_back": 730,
+    "window_days": 14,
+    "probe_pagination": false,
+    "longshot": true,
     "half_spread_cents": 1.0,
     "offline": false,
     "offline_wallets": 1200,
@@ -25,73 +28,100 @@
     "offline_edge": 0.15
   },
   "meta": {
-    "n_wallets_discovered": 1,
-    "mode": "named",
-    "named_wallets": [
-      "0x4ebc2722adc772bde8680792d0a6fdf15499a33d"
+    "by_category": {
+      "other": {
+        "pool": 10377,
+        "sampled": 400,
+        "fetched": 400
+      },
+      "crypto": {
+        "pool": 2687,
+        "sampled": 400,
+        "fetched": 400
+      },
+      "sports": {
+        "pool": 7175,
+        "sampled": 400,
+        "fetched": 400
+      },
+      "econ": {
+        "pool": 202,
+        "sampled": 202,
+        "fetched": 202
+      },
+      "politics": {
+        "pool": 1506,
+        "sampled": 400,
+        "fetched": 400
+      },
+      "entertainment": {
+        "pool": 274,
+        "sampled": 274,
+        "fetched": 274
+      },
+      "weather": {
+        "pool": 1113,
+        "sampled": 400,
+        "fetched": 400
+      }
+    },
+    "n_raw_trades": 2725782,
+    "n_wallets_discovered": 264348
+  },
+  "market_pool": {
+    "raw_markets_fetched": 39730,
+    "with_winning_outcome": 39545,
+    "after_volume_filter": null,
+    "resolved_pool": 23334,
+    "outcome_price_samples": [
+      "[\"1\", \"0\"]",
+      "[\"1\", \"0\"]",
+      "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]"
     ],
-    "n_raw_fills": 10500,
-    "n_markets_touched": 191,
-    "n_markets_resolved": 190,
-    "fill_coverage": 0.9998095238095238,
-    "match_note": "scored only on fills matched to resolved markets"
-  },
-  "market_pool": {},
-  "verdict": "NO. Nothing clears the luck bar, and no out-of-sample test could be run on this sample.",
-  "fill_coverage": 0.9998095238095238,
-  "n_wallets_scanned": 1,
-  "n_scored": 1,
-  "t_needed": 1.64,
-  "best_t": 1.13,
-  "best_edge_cents": 1.35,
-  "n_clearing_luck": 0,
-  "persistence": {
-    "verdict": "only 1 wallets active in both periods; too few to conclude anything",
-    "n_selected": 1
-  },
-  "within_wallet_split": {
-    "0x4ebc2722adc772bde8680792d0a6fdf15499a33d": {
-      "split_ts": 1785715200.0,
-      "early": {
-        "n_markets": 86,
-        "n_eff": 45.4,
-        "edge_per_share": 0.0084,
-        "t_stat": 0.45,
-        "roi": 0.018
-      },
-      "late": {
-        "n_markets": 104,
-        "n_eff": 64.1,
-        "edge_per_share": 0.0179,
-        "t_stat": 1.15,
-        "roi": 0.038
-      },
-      "edge_decay": 0.0095,
-      "verdict": "edge is positive in both halves but significant in at most one; suggestive, not established"
+    "category_pool": {
+      "other": 10377,
+      "sports": 7175,
+      "crypto": 2687,
+      "politics": 1506,
+      "weather": 1113,
+      "entertainment": 274,
+      "econ": 202
     }
   },
-  "bias": [
-    {
-      "wallet": "0x4ebc2722adc772bde8680792d0a6fdf15499a33d",
-      "overall_edge": 0.0135,
-      "extreme_band_stake": 0.377,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+  "verdict": "UNDERPOWERED, NOT NEGATIVE. No band cleared the bar, but the typical band could not have resolved an edge below 9.83c and the effect being hunted is 2-8c. This sample (1,236+1,240 markets) did not test the question. Deepen the market pool before drawing any conclusion.",
+  "longshot": {
+    "split_ts": 1749600000.0,
+    "n_markets_train": 1236,
+    "n_markets_test": 1240,
+    "rule": "no band cleared the in-sample bar; the rule trades nothing",
+    "bar_used": 2.57,
+    "n_bands_tested": 10,
+    "calibration_train": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05       1223   50.2  ... -0.0044  0.0141   -0.31\n1  0.05-0.10        980   71.5  ... -0.0393  0.0218   -1.80\n2  0.10-0.20        930   53.4  ... -0.0573  0.0397   -1.44\n3  0.20-0.35        844   74.6  ... -0.0605  0.0479   -1.26\n4  0.35-0.50        731   69.8  ...  0.0007  0.0593    0.01\n5  0.50-0.65        744   68.7  ... -0.0001  0.0596   -0.00\n6  0.65-0.80        874   74.2  ...  0.0618  0.0473    1.31\n7  0.80-0.90        941   57.7  ...  0.0563  0.0368    1.53\n8  0.90-0.95        968   64.4  ...  0.0374  0.0214    1.75\n9  0.95-1.00       1220   49.8  ...  0.0043  0.0142    0.30\n\n[10 rows x 8 columns]",
+    "calibration_test": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05       1229   13.8  ... -0.0036  0.0270   -0.13\n1  0.05-0.10        937   47.4  ... -0.0483  0.0243   -1.99\n2  0.10-0.20        867   79.3  ... -0.0634  0.0317   -2.00\n3  0.20-0.35        800   39.1  ... -0.0104  0.0707   -0.15\n4  0.35-0.50        723   41.4  ...  0.0262  0.0775    0.34\n5  0.50-0.65        713   40.0  ... -0.0312  0.0789   -0.40\n6  0.65-0.80        813   39.6  ...  0.0172  0.0691    0.25\n7  0.80-0.90        881   74.8  ...  0.0603  0.0313    1.93\n8  0.90-0.95        956   47.4  ...  0.0460  0.0224    2.05\n9  0.95-1.00       1228   13.7  ...  0.0036  0.0270    0.13\n\n[10 rows x 8 columns]",
+    "out_of_sample": {
+      "verdict": "rule is empty; nothing to evaluate",
+      "n_markets": 0
     }
-  ],
-  "style": [
-    {
-      "wallet": "0x4ebc2722adc772bde8680792d0a6fdf15499a33d",
-      "n_markets": 190,
-      "both_sides_frac": 0.995,
-      "median_fills_per_market": 45.0,
-      "median_span_hours": 1.034,
-      "extreme_band_stake": 0.377,
-      "avg_size_per_market": 12457.8,
-      "style": "market maker / latency",
-      "copyable": "UNCOPYABLE. The edge is in being first to the book. A copier is by construction the slower side of it."
-    }
-  ],
-  "economics": null,
-  "n_category_clearing": 0,
-  "n_concentrated": 0
+  },
+  "null": {
+    "verdict": "rule could not be evaluated on the real tape"
+  },
+  "power": {
+    "median_mde_cents": 9.83,
+    "bands_that_can_see_the_effect": 4,
+    "n_bands": 10,
+    "documented_effect_cents": [
+      2.0,
+      8.0
+    ],
+    "underpowered": true,
+    "verdict": "UNDERPOWERED: the typical band cannot resolve an edge below 9.8c, and the effect being hunted is 2-8c. A null here means the sample is too small, not that the bias is absent."
+  },
+  "n_wallets_scanned": 264348,
+  "n_scored": 0
 }
