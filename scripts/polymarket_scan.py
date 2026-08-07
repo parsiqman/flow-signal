@@ -186,6 +186,83 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     return trades, meta
 
 
+def probe_pagination(args) -> int:
+    """
+    Measure how deep the Gamma market listing actually paginates.
+
+    The longshot calibration reached 333 markets of a requested 3,000 because
+    `resolved_markets` fetched exactly one page and stopped. Which of the three
+    plausible causes it is -- an offset ceiling, a page-size cap, or a filter
+    that empties out -- changes the fix completely, and guessing between them
+    costs a five-minute CI round trip per attempt while telling you nothing
+    when it fails. So: measure it.
+
+    Reports, for each strategy, how many UNIQUE markets it can actually reach.
+    Uniqueness is the number that matters: a strategy that happily returns
+    10,000 rows which are the same 500 markets over and over is worse than one
+    that stops honestly at 500.
+    """
+    section("PAGINATION PROBE")
+    cfg = client.ClientConfig(cache_dir=None, rate_limit_s=args.rate_limit)
+    api = client.PolymarketClient(cfg)
+    base = {"closed": "true", "order": "endDate", "ascending": "false"}
+
+    log("A. offset ceiling, at page size 500 and 100")
+    for size in (500, 100):
+        for off in (0, size, size * 4, size * 10, size * 20, 5000, 10000):
+            try:
+                b = api._get(f"{client.GAMMA}/markets",
+                             {**base, "limit": size, "offset": off})
+                n = len(b) if isinstance(b, list) else -1
+                ids = {str(r.get("conditionId", "")) for r in b} if n > 0 else set()
+                log(f"  limit={size:<4} offset={off:<6} -> {n:>4} rows, "
+                    f"{len(ids):>4} distinct")
+            except Exception as e:                           # noqa: BLE001
+                log(f"  limit={size:<4} offset={off:<6} -> {type(e).__name__}: "
+                    f"{str(e)[:90]}")
+
+    log("\nB. does paging actually advance, or repeat the same markets?")
+    seen, pages = set(), 0
+    for off in range(0, 3000, 500):
+        try:
+            b = api._get(f"{client.GAMMA}/markets",
+                         {**base, "limit": 500, "offset": off})
+        except Exception as e:                               # noqa: BLE001
+            log(f"  stopped at offset {off}: {type(e).__name__} {str(e)[:80]}")
+            break
+        if not b:
+            log(f"  empty page at offset {off}")
+            break
+        pages += 1
+        seen |= {str(r.get("conditionId", "")) for r in b}
+        log(f"  after offset {off:<5}: {len(seen):,} distinct markets so far")
+
+    log("\nC. time-windowed slices (sidesteps any offset ceiling entirely)")
+    import datetime as _dt
+    for months in (1, 3, 6):
+        lo = (_dt.datetime.now(timezone.utc)
+              - _dt.timedelta(days=30 * months)).strftime("%Y-%m-%d")
+        hi = (_dt.datetime.now(timezone.utc)
+              - _dt.timedelta(days=30 * (months - 1))).strftime("%Y-%m-%d")
+        for lo_key, hi_key in (("end_date_min", "end_date_max"),
+                               ("start_date_min", "start_date_max")):
+            try:
+                b = api._get(f"{client.GAMMA}/markets",
+                             {**base, "limit": 500, lo_key: lo, hi_key: hi})
+                n = len(b) if isinstance(b, list) else -1
+                log(f"  {lo_key}={lo} {hi_key}={hi} -> {n} rows")
+            except Exception as e:                           # noqa: BLE001
+                log(f"  {lo_key}={lo} -> {type(e).__name__}: {str(e)[:70]}")
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "REPORT.md").write_text(
+        "# Pagination probe\n\nSee the job log for the full table. Reachable "
+        f"distinct markets by naive offset paging: **{len(seen):,}** over "
+        f"{pages} pages.\n")
+    return 0
+
+
 def probe_endpoints(args) -> int:
     """
     Hit a list of candidate endpoints and report exactly what each returns.
@@ -822,6 +899,8 @@ def main() -> int:
     ap.add_argument("--probe", default="",
                     help="probe candidate endpoints for this username and "
                          "report what each returns; makes no other calls")
+    ap.add_argument("--probe-pagination", action="store_true",
+                    help="measure how deep the market listing paginates")
     ap.add_argument("--longshot", action="store_true",
                     help="fit and walk-forward the favourite-longshot rule on "
                          "the market tape instead of scoring wallets")
@@ -834,6 +913,8 @@ def main() -> int:
     args = ap.parse_args()
 
     out = Path(args.out)
+    if args.probe_pagination:
+        return probe_pagination(args)
     if args.probe:
         return probe_endpoints(args)
     try:
