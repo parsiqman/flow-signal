@@ -626,6 +626,19 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
     else:
         log("  nothing cleared the luck bar; execution economics are moot")
 
+    # The luck gate assumes DIRECTIONAL, hold-to-resolution betting: it asks
+    # whether a wallet's per-market outcome edge could have come from chance,
+    # and floors the variance at the binomial bound for a bettor taking a view.
+    # A market maker is delta-neutral -- its per-market P&L is genuinely
+    # low-variance because it is not betting on the outcome at all -- so the
+    # floor imposes a directional bettor's uncertainty on a book that has none,
+    # and the t-statistic comes out small no matter how much money was made.
+    # Reporting that as "does not clear the luck bar" is a category error, and
+    # the run that prompted this said exactly that about a wallet the same
+    # report showed making $31,910.
+    mm = [st for st in style if st.get("style") == "market maker / latency"]
+    top_is_mm = bool(style and style[0].get("style") == "market maker / latency")
+
     gap_t = pers.get("gap_t_stat")
     persists = bool(gap_t is not None and np.isfinite(gap_t) and gap_t > 2.0
                     and pers.get("gap", 0) > 0)
@@ -665,6 +678,20 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
         verdict = (f"NO. {n_clear} wallet(s) cleared the luck bar but past "
                    f"performance does NOT predict future performance -- "
                    f"consistent with those wallets having been lucky.")
+
+    if top_is_mm:
+        prof = float(ranked["total_profit"].iloc[0]) if "total_profit" in ranked else 0.0
+        verdict = (f"UNCOPYABLE BY STYLE. The top wallet is a market maker "
+                   f"({style[0]['both_sides_frac']:.0%} of its markets traded "
+                   f"on both sides, median {style[0]['median_fills_per_market']:.0f} "
+                   f"fills per market, {style[0]['median_span_hours']:.1f}h "
+                   f"median span). It made ${prof:,.0f} in this sample and that "
+                   f"is real -- but the edge is in being first to the book, so "
+                   f"a copier is the slower side of it, not a participant in "
+                   f"it. The luck gate below assumes directional "
+                   f"hold-to-resolution betting and does NOT apply to a "
+                   f"delta-neutral book; do not read its t-statistic as a "
+                   f"judgement on this wallet. (Gate said: {verdict})")
 
     # A verdict is only as good as the share of the record it saw. Scoring this
     # account on 13 of its 1,831 markets produced a confident "NO" off n_eff

@@ -593,6 +593,21 @@ def test_the_market_making_signature_is_checked_before_the_bias_signature():
     assert st["style"] == "market maker / latency", st   # ...but is not
 
 
+def test_the_luck_gate_is_not_applied_as_a_judgement_on_a_market_maker():
+    """
+    The gate floors variance at the binomial bound for a directional bettor. A
+    delta-neutral book has genuinely low per-market variance, so the floor
+    manufactures uncertainty it does not have and the t-statistic comes out
+    small regardless of profit. A live run reported "nothing clears the luck
+    bar" about a wallet the same report showed making $31,910.
+    """
+    from pathlib import Path
+    text = (Path(__file__).resolve().parents[1]
+            / "scripts" / "polymarket_scan.py").read_text()
+    assert "UNCOPYABLE BY STYLE" in text
+    assert "does NOT apply to a" in text
+
+
 # --- the test a single named wallet can actually support ---------------------
 
 def _one_wallet(n_markets, edge_early, edge_late, seed=3):
