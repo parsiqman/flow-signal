@@ -79,6 +79,22 @@ TRADE_COLUMNS = (
 )
 
 
+def _kish_n_eff(w: np.ndarray) -> float:
+    """
+    Kish effective sample size for size-weighted observations.
+
+    Size weighting is right -- a $10,000 bet is more evidence than a $10 one --
+    but it means the nominal count overstates the information present. One
+    enormous position among fifty tiny ones is close to a sample of one, and
+    this is the quantity that says so.
+    """
+    w = np.asarray(w, dtype=float)
+    denom = float(np.sum(w ** 2))
+    if denom <= 0:
+        return 0.0
+    return float(w.sum() ** 2 / denom)
+
+
 def normalise_trades(df: pd.DataFrame) -> pd.DataFrame:
     """
     Reduce fills to signed long-YES exposure so every trade is comparable.
@@ -180,7 +196,7 @@ def score_wallets(trades: pd.DataFrame, min_trades: int = 20,
             continue
         edge = float(np.average(edges, weights=w))
         # Kish effective sample size over MARKETS, not fills.
-        n_eff = float(w.sum() ** 2 / np.sum(w ** 2))
+        n_eff = _kish_n_eff(w)
         sd = (float(np.sqrt(np.average((edges - edge) ** 2, weights=w)))
               if n_mkts > 1 else np.nan)
         # Variance floor. A wallet whose market-level edges happen to be nearly

@@ -32,7 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from polymarket import client, execution, fixtures, wallets   # noqa: E402
+from polymarket import client, execution, fixtures, longshot, wallets   # noqa: E402
 
 
 # Stage-by-stage market-pool counts. Logs are not retrievable from a finished
@@ -128,6 +128,23 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         raise RuntimeError("no trades returned from any sampled market")
 
     log("\n" + client.describe_response(raw, "trades"))
+
+    if args.longshot:
+        # Stop here. The rule is a claim about MARKET structure, so the right
+        # tape is every fill in a sampled set of markets. Fetching full wallet
+        # histories would re-weight it toward the markets that active wallets
+        # happen to trade, which is a selection on the traders rather than a
+        # sample of the venue -- the same mistake as calibrating on the weather
+        # specialist's own markets, one step removed.
+        seed = client.normalise_trades(raw, resolved)
+        if "category" in resolved.columns:
+            seed = seed.merge(resolved[["market_id", "category"]].drop_duplicates(),
+                              on="market_id", how="left")
+            seed["category"] = seed["category"].fillna("other")
+        log(f"\n{len(seed):,} fills across {seed['market_id'].nunique():,} "
+            f"markets (market sample, no wallet selection)")
+        meta["n_wallets_discovered"] = int(seed["wallet"].nunique())
+        return seed, meta
 
     section("3. FETCHING FULL WALLET HISTORIES")
     log("Judging a wallet on whichever trades fell inside our market sample is")
@@ -369,6 +386,81 @@ def collect_named_wallets(args) -> tuple[pd.DataFrame, dict]:
                     "n_markets_resolved": int(len(resolved)),
                     "fill_coverage": float(coverage),
                     "match_note": "scored only on fills matched to resolved markets"}
+
+
+def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
+    """
+    Fit and walk-forward the favourite-longshot rule on the whole market tape.
+
+    Deliberately NOT run on one wallet's markets. That trader picked which
+    markets to be in, so his tape is a selected sample of exactly the places he
+    thought the bias was worth taking -- calibrating on it would measure his
+    selection as if it were the market's structure. The population tape is the
+    honest sample, and it is also the one a rule would actually trade.
+    """
+    section("LONGSHOT RULE: calibration on the market tape")
+    log("The counterparty is named: people overpay for lottery-shaped payoffs.")
+    log("That is a preference, not a mispricing arbitrage will close -- which")
+    log("is why it persists, and why capacity is small and recreational.\n")
+
+    cal = longshot.calibrate(trades)
+    log("full-sample calibration (NOT the result -- shown for shape only):")
+    log(cal.to_string(index=False))
+
+    section("WALK-FORWARD (fit on early markets, evaluate on later ones)")
+    wf = longshot.walk_forward(trades, half_spread_cents=args.half_spread_cents)
+    if "out_of_sample" not in wf:
+        return {"verdict": f"INCONCLUSIVE. {wf.get('verdict', 'no split')}",
+                "longshot": wf, "n_wallets_scanned": 0, "n_scored": 0}
+
+    log(f"  split at                 : {wf['split_ts']}")
+    log(f"  markets train / test     : {wf['n_markets_train']:,} / "
+        f"{wf['n_markets_test']:,}")
+    log(f"  bands examined           : {wf['n_bands_tested']}")
+    log(f"  bar after correction     : {wf['bar_used']}")
+    log(f"  rule fitted              : {wf['rule']}")
+    log("\ntrain calibration:")
+    log(wf["calibration_train"].to_string(index=False))
+    log("\ntest calibration (the rule never saw this):")
+    log(wf["calibration_test"].to_string(index=False))
+
+    oos = wf["out_of_sample"]
+    log("\nOUT OF SAMPLE, net of the spread:")
+    for k, v in oos.items():
+        log(f"  {k:30} {v}")
+
+    section("NULL CHECK (would honest prices produce this by chance?)")
+    rule = longshot.fit(trades[trades["market_id"].isin(
+        trades.groupby("market_id")["resolved_at"].min()
+        .sort_values().index[:wf["n_markets_train"]])])
+    nul = longshot.null_check(rule, trades, n_draws=120,
+                              half_spread_cents=args.half_spread_cents)
+    for k, v in nul.items():
+        log(f"  {k:30} {v}")
+
+    net = oos.get("net_edge_cents", 0.0)
+    t = oos.get("t_stat_net", 0.0)
+    if rule.is_empty():
+        verdict = ("NO. No price band shows a bias that survives the "
+                   "multiple-testing bar. There is no rule here to trade.")
+    elif net > 0 and t and t > 2.0 and nul.get("p_value", 1.0) < 0.05:
+        verdict = (f"YES, MEASURABLY. The rule pays {net:.2f}c/share net of a "
+                   f"{oos['cost_cents']:.2f}c spread out of sample (t={t}), and "
+                   f"exceeds what honest prices produce by chance. Break-even "
+                   f"half-spread is {oos['breakeven_half_spread_cents']:.2f}c "
+                   f"-- check that against a real book before sizing anything.")
+    elif net > 0:
+        verdict = (f"WEAK. The rule pays {net:.2f}c/share out of sample but at "
+                   f"t={t}, which is not distinguishable from luck at this "
+                   f"sample size.")
+    else:
+        verdict = (f"NO. The bias is visible but the spread eats it: "
+                   f"{oos.get('gross_edge_cents', 0):.2f}c gross against "
+                   f"{oos.get('cost_cents', 0):.2f}c of cost.")
+
+    return {"verdict": verdict, "longshot": wf, "null": nul,
+            "n_wallets_scanned": int(meta.get("n_wallets_discovered", 0)),
+            "n_scored": 0}
 
 
 def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
@@ -658,6 +750,11 @@ def main() -> int:
     ap.add_argument("--probe", default="",
                     help="probe candidate endpoints for this username and "
                          "report what each returns; makes no other calls")
+    ap.add_argument("--longshot", action="store_true",
+                    help="fit and walk-forward the favourite-longshot rule on "
+                         "the market tape instead of scoring wallets")
+    ap.add_argument("--half-spread-cents", type=float, default=1.0,
+                    help="cents per share given up crossing to get filled")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--offline-wallets", type=int, default=1200)
     ap.add_argument("--offline-skilled", type=float, default=0.05)
@@ -669,6 +766,12 @@ def main() -> int:
         return probe_endpoints(args)
     try:
         trades, meta = collect(args)
+        if args.longshot:
+            report = analyse_longshot(trades, meta, args)
+            write_report(report, meta, args, out)
+            section("VERDICT")
+            log(report["verdict"])
+            return 0
         report = analyse(trades, meta, args)
         write_report(report, meta, args, out)
         section("VERDICT")
