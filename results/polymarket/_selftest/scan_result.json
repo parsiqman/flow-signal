@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07 16:04 UTC",
+  "generated_at": "2026-08-07 18:31 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -17,6 +17,7 @@
     "out": "results/polymarket/_selftest",
     "wallets": "",
     "probe": "",
+    "max_trades_per_market": 5000,
     "days_back": 730,
     "window_days": 14,
     "probe_pagination": false,

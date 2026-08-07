@@ -1,11 +1,11 @@
-# Polymarket wallet scan — 2026-08-07 18:28 UTC
+# Polymarket wallet scan — 2026-08-07 19:43 UTC
 
-## UNDERPOWERED, NOT NEGATIVE. No band cleared the bar, but the typical band could not have resolved an edge below 9.83c and the effect being hunted is 2-8c. This sample (1,236+1,240 markets) did not test the question. Deepen the market pool before drawing any conclusion.
+## YES, MEASURABLY. The rule pays 4.41c/share net of a 1.00c spread out of sample (t=3.27), and exceeds what honest prices produce by chance. Break-even half-spread is 5.41c -- check that against a real book before sizing anything.
 
 | | |
 |---|---|
 | mode | None |
-| wallets discovered | 264,348 |
+| wallets discovered | 112,249 |
 | wallets scored (>=20 fills, >=10 markets) | 0 |
 | t-stat needed to clear luck | None |
 | best t observed | None |
