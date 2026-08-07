@@ -50,6 +50,10 @@ on:
         description: "Measure how deep the market listing paginates (true/false)"
         required: false
         default: "false"
+      max_trades_per_market:
+        description: "Cap fills fetched per market (low = wider market coverage)"
+        required: false
+        default: "5000"
       days_back:
         description: "How far back the market crawl reaches, in days"
         required: false
@@ -126,6 +130,7 @@ jobs:
             --min-trades "${{ github.event.inputs.min_trades || 20 }}" \
             --seed "${{ github.event.inputs.seed || 0 }}" \
             --days-back "${{ github.event.inputs.days_back || 730 }}" \
+            --max-trades-per-market "${{ github.event.inputs.max_trades_per_market || 5000 }}" \
             --cache /tmp/pm_cache \
             --out results/polymarket
 

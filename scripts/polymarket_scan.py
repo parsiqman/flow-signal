@@ -127,7 +127,8 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         log("")
         raw, meta = client.discover_stratified(
             api, resolved, per_category=args.per_category, seed=args.seed,
-            categories=args.categories.split(",") if args.categories else None)
+            categories=args.categories.split(",") if args.categories else None,
+            max_trades_per_market=args.max_trades_per_market)
     else:
         raw, meta = client.discover_population(api, resolved,
                                                n_markets=args.markets,
@@ -909,6 +910,14 @@ def main() -> int:
     ap.add_argument("--probe", default="",
                     help="probe candidate endpoints for this username and "
                          "report what each returns; makes no other calls")
+    ap.add_argument("--max-trades-per-market", type=int, default=5000,
+                    help="cap fills fetched per market. For the longshot "
+                         "calibration the sample size is MARKETS, not fills -- "
+                         "each market contributes one observation per band "
+                         "however many times it traded -- so a low cap buys "
+                         "several times the market coverage for the same "
+                         "number of requests, which is what the power gate "
+                         "actually needs.")
     ap.add_argument("--days-back", type=int, default=730,
                     help="how far back the date-windowed market crawl reaches")
     ap.add_argument("--window-days", type=int, default=14,
