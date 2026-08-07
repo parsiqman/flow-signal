@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06 23:38 UTC",
+  "generated_at": "2026-08-06 23:59 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -46,6 +46,7 @@
     "rank_correlation": 0.0919,
     "verdict": "past performance predicts future performance"
   },
+  "within_wallet_split": {},
   "bias": [
     {
       "wallet": "0x0000000000000000000000000000000000000382",

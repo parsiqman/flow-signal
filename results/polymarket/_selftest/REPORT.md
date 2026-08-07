@@ -1,4 +1,4 @@
-# Polymarket wallet scan — 2026-08-06 23:38 UTC
+# Polymarket wallet scan — 2026-08-06 23:59 UTC
 
 ## MAYBE. 6 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.
 
@@ -24,6 +24,36 @@
 - `gap_t_stat`: 3.49
 - `rank_correlation`: 0.0919
 - `verdict`: past performance predicts future performance
+
+### Bias attribution — `0x0000000000000000000000000000000000000382`
+
+- `overall_edge`: 0.2523
+- `extreme_band_stake`: 0.16
+- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
+
+### Bias attribution — `0x0000000000000000000000000000000000000145`
+
+- `overall_edge`: 0.25
+- `extreme_band_stake`: 0.199
+- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
+
+### Bias attribution — `0x000000000000000000000000000000000000021f`
+
+- `overall_edge`: 0.2228
+- `extreme_band_stake`: 0.114
+- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
+
+### Bias attribution — `0x00000000000000000000000000000000000000b0`
+
+- `overall_edge`: 0.2218
+- `extreme_band_stake`: 0.127
+- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
+
+### Bias attribution — `0x0000000000000000000000000000000000000124`
+
+- `overall_edge`: 0.2076
+- `extreme_band_stake`: 0.149
+- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
 
 ## Copy economics
 

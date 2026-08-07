@@ -1,6 +1,6 @@
-# Polymarket wallet scan — 2026-08-06 23:52 UTC
+# Polymarket wallet scan — 2026-08-07 00:00 UTC
 
-## NO. 1 wallet(s) cleared the luck bar but past performance does NOT predict future performance -- consistent with those wallets having been lucky.
+## MAYBE. 1 wallet(s) clear the luck bar, and the edge is positive in both halves of their own history. The cross-sectional persistence test could NOT be run (too few wallets) -- this is weaker evidence than it looks. Check bias attribution before building anything.
 
 | | |
 |---|---|
@@ -18,6 +18,20 @@
 
 - `verdict`: only 1 wallets active in both periods; too few to conclude anything
 - `n_selected`: 1
+
+### Within-wallet split — `0x6011655c4afb76f36dd1b08a137a1ba73466b31e`
+
+- `split_ts`: 1782777600.0
+- `early`: {'n_markets': 897, 'n_eff': 457.2, 'edge_per_share': 0.0431, 't_stat': 7.41, 'roi': 0.0952}
+- `late`: {'n_markets': 934, 'n_eff': 372.5, 'edge_per_share': 0.0458, 't_stat': 7.1, 'roi': 0.101}
+- `edge_decay`: 0.0027
+- `verdict`: edge is present and significant in BOTH halves of this wallet's own history
+
+### Bias attribution — `0x6011655c4afb76f36dd1b08a137a1ba73466b31e`
+
+- `overall_edge`: 0.0445
+- `extreme_band_stake`: 0.832
+- `verdict`: edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy
 
 ## Copy economics
 
