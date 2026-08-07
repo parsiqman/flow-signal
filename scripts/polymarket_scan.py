@@ -438,11 +438,32 @@ def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
     for k, v in nul.items():
         log(f"  {k:30} {v}")
 
+    section("POWER: could this sample have SEEN the effect?")
+    log("Asked before reading the result, not after. A band with an effective")
+    log("sample of 30 cannot resolve anything under ~20 cents, and the bias")
+    log("being hunted is 2-8 cents. Such a band reporting 'no edge' has")
+    log("reported nothing.\n")
+    pw = longshot.power_verdict(wf["calibration_train"], wf["bar_used"])
+    for k, v in pw.items():
+        log(f"  {k:32} {v}")
+    log("\nminimum detectable edge by band (test period):")
+    log(longshot.minimum_detectable_edge(
+        wf["calibration_test"], wf["bar_used"]).to_string(index=False))
+
     net = oos.get("net_edge_cents", 0.0)
     t = oos.get("t_stat_net", 0.0)
-    if rule.is_empty():
+    if rule.is_empty() and pw.get("underpowered"):
+        verdict = (f"UNDERPOWERED, NOT NEGATIVE. No band cleared the bar, but "
+                   f"the typical band could not have resolved an edge below "
+                   f"{pw['median_mde_cents']}c and the effect being hunted is "
+                   f"2-8c. This sample "
+                   f"({wf['n_markets_train']:,}+{wf['n_markets_test']:,} "
+                   f"markets) did not test the question. Deepen the market "
+                   f"pool before drawing any conclusion.")
+    elif rule.is_empty():
         verdict = ("NO. No price band shows a bias that survives the "
-                   "multiple-testing bar. There is no rule here to trade.")
+                   "multiple-testing bar, on a sample large enough to have "
+                   "seen one. There is no rule here to trade.")
     elif net > 0 and t and t > 2.0 and nul.get("p_value", 1.0) < 0.05:
         verdict = (f"YES, MEASURABLY. The rule pays {net:.2f}c/share net of a "
                    f"{oos['cost_cents']:.2f}c spread out of sample (t={t}), and "
@@ -458,7 +479,7 @@ def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
                    f"{oos.get('gross_edge_cents', 0):.2f}c gross against "
                    f"{oos.get('cost_cents', 0):.2f}c of cost.")
 
-    return {"verdict": verdict, "longshot": wf, "null": nul,
+    return {"verdict": verdict, "longshot": wf, "null": nul, "power": pw,
             "n_wallets_scanned": int(meta.get("n_wallets_discovered", 0)),
             "n_scored": 0}
 
@@ -577,6 +598,24 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
         except Exception as e:                               # noqa: BLE001
             log(f"  {w[:14]}... bias attribution failed: {e}")
 
+    section("6b. TRADE STYLE (can this edge be copied AT ALL?)")
+    log("Edge size says whether the edge is real. It says nothing about")
+    log("whether any of it is available to a copier, and the two are")
+    log("independent -- a latency bot and a forecaster can post the same edge")
+    log("per share with opposite answers.\n")
+    style = []
+    for w in ranked.head(5)["wallet"]:
+        try:
+            s = wallets.style_attribution(trades, w)
+            style.append({"wallet": w, **s})
+            log(f"  {w[:14]}... {s['style']}")
+            log(f"    both sides {s['both_sides_frac']} | "
+                f"fills/market {s['median_fills_per_market']} | "
+                f"span {s['median_span_hours']}h")
+            log(f"    {s['copyable']}")
+        except Exception as e:                               # noqa: BLE001
+            log(f"  {w[:14]}... style attribution failed: {e}")
+
     section("7. COPY ECONOMICS")
     econ = None
     if n_clear:
@@ -650,6 +689,7 @@ def analyse(trades: pd.DataFrame, meta: dict, args) -> dict:
         "persistence": pers,
         "within_wallet_split": oos,
         "bias": bias,
+        "style": style,
         "economics": econ,
         "n_category_clearing": int(by_cat["clears_luck"].sum()) if len(by_cat) else 0,
         "n_concentrated": int(len(conc)),
@@ -707,6 +747,11 @@ def write_report(report: dict, meta: dict, args, out: Path) -> None:
     for b in (report.get("bias") or []):
         lines += ["", f"### Bias attribution — `{b.get('wallet', '')}`", ""]
         for k, v in b.items():
+            if k != "wallet":
+                lines.append(f"- `{k}`: {v}")
+    for st in (report.get("style") or []):
+        lines += ["", f"### Trade style — `{st.get('wallet', '')}`", ""]
+        for k, v in st.items():
             if k != "wallet":
                 lines.append(f"- `{k}`: {v}")
     if report.get("economics"):

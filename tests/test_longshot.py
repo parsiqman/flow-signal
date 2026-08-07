@@ -226,6 +226,36 @@ def test_too_little_history_refuses_rather_than_guessing():
     assert "too few" in wf["verdict"]
 
 
+# --- power: is a null informative, or just small? -------------------------
+
+def test_a_thin_sample_is_reported_as_underpowered_not_as_negative():
+    """
+    The live run returned "no band cleared the bar" from 333 markets, where the
+    typical band could not resolve anything under ~20 cents against a 2-8 cent
+    effect. That is not a negative result; it is an untested question, and
+    reporting it as a finding is the failure this whole repo exists to stop.
+    """
+    cal = longshot.calibrate(unbiased_tape(n_markets=120, seed=1))
+    pw = longshot.power_verdict(cal, bar=2.57)
+    assert pw["underpowered"] is True, pw
+    assert "UNDERPOWERED" in pw["verdict"]
+
+
+def test_a_large_sample_is_reported_as_adequately_powered():
+    cal = longshot.calibrate(unbiased_tape(n_markets=20000, seed=1))
+    pw = longshot.power_verdict(cal, bar=2.57)
+    assert pw["underpowered"] is False, pw
+    assert pw["median_mde_cents"] <= longshot.DOCUMENTED_EFFECT_CENTS[1]
+
+
+def test_minimum_detectable_edge_falls_as_the_sample_grows():
+    small = longshot.power_verdict(
+        longshot.calibrate(unbiased_tape(n_markets=400, seed=2)), 2.57)
+    big = longshot.power_verdict(
+        longshot.calibrate(unbiased_tape(n_markets=8000, seed=2)), 2.57)
+    assert big["median_mde_cents"] < small["median_mde_cents"]
+
+
 if __name__ == "__main__":
     fns = [f for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0
