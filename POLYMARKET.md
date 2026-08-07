@@ -1,12 +1,49 @@
 # Polymarket Copy Trading — feasibility
 
 ```bash
-python tests/test_polymarket.py     # 19 tests
+python tests/test_polymarket.py     # 45 tests
 ```
 
-**Status: analysed, not attempted.** No real Polymarket data has been touched.
-Everything below is either a checked fact about the venue or a result on
-populations with known ground truth.
+**Status: run against live data.** See "The first real wallet" below. Everything
+else is either a checked fact about the venue or a result on populations with
+known ground truth.
+
+---
+
+## The first real wallet (2026-08-07)
+
+One account was named from outside this dataset — a weather specialist,
+`0x6011655c4afb76f36dd1b08a137a1ba73466b31e` — and scored on its complete
+record. It is the first thing in this repo to clear its pre-registered bar.
+
+| | |
+|---|---|
+| fills / markets | 5,307 / 1,831 (100% of the record matched) |
+| edge | **4.45 c/share**, ROI 9.8% |
+| t-statistic | **10.19** |
+| bar if genuinely pre-specified (N=1) | 1.64 — cleared |
+| bar if inheriting someone's search (N=1000) | 3.92 — cleared |
+| effective sample (Kish) | 810 markets |
+| own-history split | early t=7.41, late t=7.10, decay +0.003 |
+
+Both halves of its own history clear even the inherited-search bar
+independently, so this is not a streak.
+
+**And you should still not copy it.** 83% of stake sits in the extreme price
+bands: this is favourite-longshot harvesting, a documented structural bias, not
+private information. Copying pays 2.93c of cross-venue slippage against a 4.45c
+edge — 34% retained, ~17%/yr — to rent a rule you can run yourself. The
+deliverable here is the rule, not the wallet.
+
+Three pipeline bugs stood between the first run and this number, all of the
+same species: **a data path that returns the wrong thing looks exactly like a
+negative result.** Gamma answers 200 with its default listing for a parameter
+it does not recognise (1,840 politics markets for a weather trader, 0 fills
+matched); then it answered for only 13 of 1,831 ids, enough to print a
+confident "NO" off an effective sample of 4.7; then the cross-sectional
+persistence test, which cannot run on a single wallet, had its "too few
+wallets" non-answer read as a failed test. Nothing about the trader changed
+between the first verdict and this one.
 
 ---
 
