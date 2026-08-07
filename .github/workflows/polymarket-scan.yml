@@ -46,6 +46,10 @@ on:
         description: "Probe API endpoints for this username and report shapes"
         required: false
         default: ""
+      probe_pagination:
+        description: "Measure how deep the market listing paginates (true/false)"
+        required: false
+        default: "false"
       longshot:
         description: "Fit the favourite-longshot rule instead of scoring wallets"
         required: false
@@ -97,7 +101,9 @@ jobs:
         continue-on-error: true    # a failed scan must still publish its report
         run: |
           EXTRA=""
-          if [ -n "${{ github.event.inputs.probe }}" ]; then
+          if [ "${{ github.event.inputs.probe_pagination }}" = "true" ]; then
+            EXTRA="--probe-pagination"
+          elif [ -n "${{ github.event.inputs.probe }}" ]; then
             EXTRA="--probe ${{ github.event.inputs.probe }}"
           elif [ -n "${{ github.event.inputs.wallets }}" ]; then
             EXTRA="--wallets ${{ github.event.inputs.wallets }}"
