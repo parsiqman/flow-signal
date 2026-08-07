@@ -46,6 +46,14 @@ on:
         description: "Probe API endpoints for this username and report shapes"
         required: false
         default: ""
+      longshot:
+        description: "Fit the favourite-longshot rule instead of scoring wallets"
+        required: false
+        default: "false"
+      half_spread_cents:
+        description: "Cents per share given up crossing the spread"
+        required: false
+        default: "1.0"
   schedule:
     # Sundays 06:00 UTC. Cheap, and the population grows over time.
     - cron: "0 6 * * 0"
@@ -98,6 +106,9 @@ jobs:
             if [ -n "${{ github.event.inputs.categories }}" ]; then
               EXTRA="$EXTRA --categories ${{ github.event.inputs.categories }}"
             fi
+          fi
+          if [ "${{ github.event.inputs.longshot }}" = "true" ]; then
+            EXTRA="$EXTRA --longshot --half-spread-cents ${{ github.event.inputs.half_spread_cents || 1.0 }}"
           fi
           python scripts/polymarket_scan.py $EXTRA \
             --markets "${{ github.event.inputs.markets || 200 }}" \

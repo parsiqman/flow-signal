@@ -684,3 +684,95 @@ def wallet_out_of_sample(trades: pd.DataFrame, wallet: str,
     return {"split_ts": cut, "early": early, "late": late,
             "edge_decay": round(late["edge_per_share"] - early["edge_per_share"], 4),
             "verdict": verdict}
+
+
+def style_attribution(trades: pd.DataFrame, wallet: str) -> dict:
+    """
+    What KIND of trader is this, and can the style be copied at all?
+
+    Edge size answers "is this real". It does not answer "can I have any of
+    it", and the two are independent. A market maker and a forecaster can post
+    the same edge per share and have completely different answers to the second
+    question, because one of them is being paid for standing in the book faster
+    than you can and the other is being paid for knowing something.
+
+    Three numbers separate the styles, and none of them look at profit:
+
+      - `both_sides_frac`  -- markets where the wallet both bought AND sold.
+        A trader holding a view to resolution has no reason to do this; a
+        market maker does it constantly, because the round trip IS the trade.
+      - `median_fills_per_market` -- scalping a moving book takes dozens of
+        fills per market; taking a view takes one or two.
+      - `median_span_hours` -- how long between first and last fill in a
+        market. Minutes means intraday inventory. Days means a position.
+
+    The copyability verdict follows from the style, not from the edge:
+
+      market maker / latency  -> UNCOPYABLE. By the time their fill is public
+                                 the price has already moved to where they put
+                                 it. You would be the counterparty they are
+                                 making money from, one step slower.
+      bias harvester          -> RUN THE RULE. The edge is structural and
+                                 available to anyone who posts the same orders.
+      position taker          -> COPYABLE IN PRINCIPLE, subject to the
+                                 slippage arithmetic in execution.py.
+    """
+    t = trades[trades["wallet"] == wallet].copy()
+    if t.empty:
+        return {"verdict": "no trades for this wallet"}
+    t["side"] = t["side"].astype(str).str.upper()
+
+    per = t.groupby("market_id").agg(
+        n_fills=("size", "size"),
+        n_buys=("side", lambda s: int((s == "BUY").sum())),
+        n_sells=("side", lambda s: int((s == "SELL").sum())),
+        first_ts=("timestamp", "min"),
+        last_ts=("timestamp", "max"),
+        size=("size", "sum"),
+    )
+    both = (per["n_buys"] > 0) & (per["n_sells"] > 0)
+    both_frac = float(both.mean())
+    med_fills = float(per["n_fills"].median())
+    span_h = float(((per["last_ts"] - per["first_ts"]) / 3600.0).median())
+
+    bias = bias_attribution(trades, wallet)
+    # Read the key bias_attribution actually returns. A .get() with a wrong
+    # name defaults silently to 0.0, which would classify every bias harvester
+    # as something else and never raise -- the exact shape of failure this
+    # repo keeps hitting.
+    if "stake_in_extreme_bands" not in bias:
+        raise KeyError(f"bias_attribution returned {sorted(bias)}; expected "
+                       f"'stake_in_extreme_bands'")
+    extreme = float(bias["stake_in_extreme_bands"])
+
+    # Order matters: the market-making signature is checked first because it
+    # is the one that makes the other questions moot. A bot that rounds trips
+    # both sides can also show an extreme-band tilt, and reading that as bias
+    # harvesting would recommend a rule that is really somebody's latency.
+    if both_frac > 0.5 and med_fills >= 6:
+        style = "market maker / latency"
+        copyable = ("UNCOPYABLE. The edge is in being first to the book. A "
+                    "copier is by construction the slower side of it.")
+    elif extreme > 0.6:
+        style = "bias harvester"
+        copyable = ("RUN THE RULE. Structural, available to anyone posting the "
+                    "same orders, and cheaper without the copy latency.")
+    elif med_fills <= 3 and both_frac < 0.2:
+        style = "position taker"
+        copyable = ("COPYABLE IN PRINCIPLE. Check the slippage arithmetic "
+                    "before believing it survives execution.")
+    else:
+        style = "mixed / unclear"
+        copyable = ("UNCLEAR. The signature does not match a clean style; "
+                    "inspect the fills before drawing any conclusion.")
+
+    return {
+        "n_markets": int(len(per)),
+        "both_sides_frac": round(both_frac, 3),
+        "median_fills_per_market": round(med_fills, 1),
+        "median_span_hours": round(span_h, 3),
+        "extreme_band_stake": round(extreme, 3),
+        "avg_size_per_market": round(float(per["size"].mean()), 1),
+        "style": style,
+        "copyable": copyable,
+    }

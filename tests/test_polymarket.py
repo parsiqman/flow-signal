@@ -521,6 +521,93 @@ def test_concentrated_edge_surfaces_what_the_market_filter_excludes():
     assert "0xNORMAL" not in set(hits["wallet"])
 
 
+# --- scalpers: does the arithmetic even apply to them? -----------------------
+
+def test_a_round_trip_scalp_is_priced_by_the_move_not_the_outcome():
+    """
+    Load-bearing and previously untested. A bot that buys at 47c and sells at
+    60c in the same market made 13c whoever wins. The signed long-YES
+    representation has to produce exactly that, independent of the outcome --
+    if it collapsed to zero, every market maker in the data would score as
+    having no edge and the scan would quietly conclude they do not exist.
+    """
+    for won in (0.0, 1.0):
+        df = pd.DataFrame([
+            {"wallet": "0xMM", "market_id": 1, "timestamp": 0.0, "price": 0.47,
+             "size": 100.0, "side": "BUY", "outcome": won, "resolved_at": 9.0},
+            {"wallet": "0xMM", "market_id": 1, "timestamp": 1.0, "price": 0.60,
+             "size": 100.0, "side": "SELL", "outcome": won, "resolved_at": 9.0},
+        ])
+        profit = wallets.normalise_trades(df)["profit"].sum()
+        assert abs(profit - 13.0) < 1e-9, (won, profit)
+
+
+def test_market_making_is_flagged_as_uncopyable_however_large_the_edge():
+    """
+    Edge size answers "is this real"; it does not answer "can I have any of
+    it". A latency bot's fills are public only after the price has moved to
+    where it put them.
+    """
+    rows = []
+    for m in range(40):
+        for i in range(12):
+            rows.append({"wallet": "0xMM", "market_id": m, "timestamp": float(i),
+                         "price": 0.47, "size": 100.0, "side": "BUY",
+                         "outcome": 1.0, "resolved_at": 1e5})
+            rows.append({"wallet": "0xMM", "market_id": m,
+                         "timestamp": float(i) + 0.5, "price": 0.60,
+                         "size": 100.0, "side": "SELL", "outcome": 1.0,
+                         "resolved_at": 1e5})
+    st = wallets.style_attribution(pd.DataFrame(rows), "0xMM")
+    assert st["style"] == "market maker / latency", st
+    assert "UNCOPYABLE" in st["copyable"], st
+
+
+def test_a_position_taker_is_not_mistaken_for_a_market_maker():
+    rows = [{"wallet": "0xPT", "market_id": m, "timestamp": 0.0, "price": 0.45,
+             "size": 100.0, "side": "BUY", "outcome": float(m % 2),
+             "resolved_at": 1e5} for m in range(40)]
+    st = wallets.style_attribution(pd.DataFrame(rows), "0xPT")
+    assert st["style"] == "position taker", st
+    assert "COPYABLE IN PRINCIPLE" in st["copyable"], st
+
+
+def test_the_market_making_signature_is_checked_before_the_bias_signature():
+    """
+    A round-tripping bot can also show an extreme-band tilt. Reading that as
+    bias harvesting would recommend building a rule that is really somebody
+    else's latency.
+    """
+    rows = []
+    for m in range(40):
+        for i in range(10):
+            rows.append({"wallet": "0xMM", "market_id": m, "timestamp": float(i),
+                         "price": 0.02, "size": 100.0, "side": "BUY",
+                         "outcome": 1.0, "resolved_at": 1e5})
+            rows.append({"wallet": "0xMM", "market_id": m,
+                         "timestamp": float(i) + 0.5, "price": 0.04,
+                         "size": 100.0, "side": "SELL", "outcome": 1.0,
+                         "resolved_at": 1e5})
+    st = wallets.style_attribution(pd.DataFrame(rows), "0xMM")
+    assert st["extreme_band_stake"] > 0.6, st       # looks like bias...
+    assert st["style"] == "market maker / latency", st   # ...but is not
+
+
+def test_the_luck_gate_is_not_applied_as_a_judgement_on_a_market_maker():
+    """
+    The gate floors variance at the binomial bound for a directional bettor. A
+    delta-neutral book has genuinely low per-market variance, so the floor
+    manufactures uncertainty it does not have and the t-statistic comes out
+    small regardless of profit. A live run reported "nothing clears the luck
+    bar" about a wallet the same report showed making $31,910.
+    """
+    from pathlib import Path
+    text = (Path(__file__).resolve().parents[1]
+            / "scripts" / "polymarket_scan.py").read_text()
+    assert "UNCOPYABLE BY STYLE" in text
+    assert "does NOT apply to a" in text
+
+
 # --- the test a single named wallet can actually support ---------------------
 
 def _one_wallet(n_markets, edge_early, edge_late, seed=3):

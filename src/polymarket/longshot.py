@@ -334,3 +334,59 @@ def walk_forward(trades: pd.DataFrame, bands: tuple[float, ...] = DEFAULT_BANDS,
     out["out_of_sample"] = evaluate(rule, test,
                                     half_spread_cents=half_spread_cents)
     return out
+
+
+# Favourite-longshot bias, as measured in the literature, expressed as the
+# pricing error at the extremes. Racetrack and exchange studies put it in the
+# low single digits of a cent to under ten cents. This is the effect the test
+# has to be able to SEE; a run that cannot resolve it has not tested anything.
+DOCUMENTED_EFFECT_CENTS = (2.0, 8.0)
+
+
+def minimum_detectable_edge(cal: pd.DataFrame, bar: float) -> pd.DataFrame:
+    """
+    The smallest edge each band could have detected, in cents.
+
+    This is the question that has to be asked BEFORE reading a null result,
+    and not asking it is how this project has repeatedly manufactured
+    confident negatives. A band with an effective sample of 30 has a standard
+    error near 9 cents; against a corrected bar of 2.57 it cannot see anything
+    smaller than 22 cents. Favourite-longshot bias is 2-8 cents. Such a band
+    reporting "no edge" has reported nothing at all.
+    """
+    out = cal.copy()
+    out["mde_cents"] = (bar * out["se"] * 100).round(2)
+    out["can_see_documented_effect"] = out["mde_cents"] <= DOCUMENTED_EFFECT_CENTS[1]
+    return out
+
+
+def power_verdict(cal: pd.DataFrame, bar: float) -> dict:
+    """
+    Is a null result from this sample informative, or just small?
+
+    Returns `underpowered=True` when the typical band cannot resolve even the
+    upper end of the documented effect. In that case the only honest report is
+    that the question was not answered -- NOT that the bias is absent.
+    """
+    mde = minimum_detectable_edge(cal, bar)
+    if mde.empty:
+        return {"underpowered": True, "verdict": "no bands to assess"}
+    med = float(mde["mde_cents"].median())
+    n_ok = int(mde["can_see_documented_effect"].sum())
+    under = med > DOCUMENTED_EFFECT_CENTS[1]
+    return {
+        "median_mde_cents": round(med, 2),
+        "bands_that_can_see_the_effect": n_ok,
+        "n_bands": int(len(mde)),
+        "documented_effect_cents": list(DOCUMENTED_EFFECT_CENTS),
+        "underpowered": bool(under),
+        "verdict": (f"UNDERPOWERED: the typical band cannot resolve an edge "
+                    f"below {med:.1f}c, and the effect being hunted is "
+                    f"{DOCUMENTED_EFFECT_CENTS[0]:.0f}-"
+                    f"{DOCUMENTED_EFFECT_CENTS[1]:.0f}c. A null here means the "
+                    f"sample is too small, not that the bias is absent."
+                    if under else
+                    f"adequately powered: the typical band resolves down to "
+                    f"{med:.1f}c, inside the {DOCUMENTED_EFFECT_CENTS[0]:.0f}-"
+                    f"{DOCUMENTED_EFFECT_CENTS[1]:.0f}c effect range"),
+    }
