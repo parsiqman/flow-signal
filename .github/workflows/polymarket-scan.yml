@@ -50,6 +50,10 @@ on:
         description: "Measure how deep the market listing paginates (true/false)"
         required: false
         default: "false"
+      days_back:
+        description: "How far back the market crawl reaches, in days"
+        required: false
+        default: "730"
       longshot:
         description: "Fit the favourite-longshot rule instead of scoring wallets"
         required: false
@@ -121,6 +125,7 @@ jobs:
             --min-volume "${{ github.event.inputs.min_volume || 5000 }}" \
             --min-trades "${{ github.event.inputs.min_trades || 20 }}" \
             --seed "${{ github.event.inputs.seed || 0 }}" \
+            --days-back "${{ github.event.inputs.days_back || 730 }}" \
             --cache /tmp/pm_cache \
             --out results/polymarket
 

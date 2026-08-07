@@ -661,6 +661,75 @@ def test_a_test_that_could_not_run_is_not_a_failed_test():
     del inspect
 
 
+# --- the crawl that was re-reading page one ---------------------------------
+
+class _GammaAsMeasured:
+    """
+    Gamma as the pagination probe actually found it, not as documented.
+
+    Two behaviours, both measured: `offset` is ignored entirely, and any query
+    returns at most 100 rows however large `limit` is. Together they make an
+    offset loop look like a crawl while it re-reads page one -- five pages,
+    500 rows, 500 distinct markets, and a market pool that arrived as 333 when
+    3,000 were asked for.
+    """
+
+    CAP = 100
+
+    def __init__(self, per_day=8):
+        self.per_day = per_day
+        self.calls = 0
+
+    def _get(self, url, params):
+        self.calls += 1
+        import datetime as dt
+        lo = dt.datetime.strptime(params["end_date_min"], "%Y-%m-%d")
+        hi = dt.datetime.strptime(params["end_date_max"], "%Y-%m-%d")
+        days = max((hi - lo).days, 0)
+        total = days * self.per_day
+        rows = [{"conditionId": f"0x{lo.date()}_{i}", "question": "q",
+                 "outcomePrices": '["1", "0"]', "endDate": f"{lo.date()}T00:00:00Z",
+                 "volumeNum": 10000.0}
+                for i in range(total)]
+        return rows[:self.CAP]           # silent truncation, exactly as measured
+
+
+def test_the_crawl_splits_windows_that_come_back_truncated():
+    """
+    A window returning exactly the cap is assumed truncated and halved. Without
+    this the crawl accepts a partial answer, and a truncated window is
+    indistinguishable from a quiet stretch of the calendar.
+    """
+    fake = _GammaAsMeasured(per_day=8)          # 14d window -> 112 > cap of 100
+    df = client.markets_by_windows(fake, days_back=60, window_days=14)
+    # 60 days at 8/day is ~480 markets; a non-splitting crawl caps at ~400.
+    assert len(df) > 420, len(df)
+    assert df["market_id"].is_unique
+
+
+def test_a_sparse_calendar_needs_no_splitting():
+    fake = _GammaAsMeasured(per_day=1)           # 14 per window, under the cap
+    df = client.markets_by_windows(fake, days_back=56, window_days=14)
+    assert df.attrs["n_windows_truncated"] == 0
+    assert fake.calls == 4                       # four windows, no recursion
+
+
+def test_offset_paging_would_have_returned_page_one_forever():
+    """
+    Pins the measured behaviour that motivated all of this, so nobody
+    reintroduces an offset loop believing it crawls.
+    """
+    class _IgnoresOffset:
+        def _get(self, url, params):
+            return [{"conditionId": f"0x{i}"} for i in range(500)]
+
+    api = _IgnoresOffset()
+    seen = set()
+    for off in (0, 500, 1000, 1500):
+        seen |= {r["conditionId"] for r in api._get("u", {"offset": off})}
+    assert len(seen) == 500, "offset paging cannot deepen the pool"
+
+
 # --- lookup by id (the bug that faked a null result) -------------------------
 
 class _IgnoresTheFilter:

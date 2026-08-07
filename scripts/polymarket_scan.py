@@ -71,8 +71,18 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     cfg = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
     api = client.PolymarketClient(cfg)
 
-    markets = api.resolved_markets(limit=args.market_pool,
-                                   min_volume=args.min_volume)
+    # Date windows, not offsets. The pagination probe measured that Gamma
+    # ignores `offset` outright -- five pages at offsets 0..2000 returned the
+    # same 500 markets -- so the previous loop re-read page one and the pool
+    # arrived at 333 when 3,000 were asked for.
+    markets = client.markets_by_windows(api, days_back=args.days_back,
+                                        window_days=args.window_days)
+    log(f"  crawl                    : {markets.attrs.get('crawl', '?')}")
+    log(f"  windows still truncated  : "
+        f"{markets.attrs.get('n_windows_truncated', '?')}")
+    if args.min_volume:
+        markets = markets[markets["volume"].fillna(0) >= args.min_volume]
+    markets = markets.reset_index(drop=True)
     log(f"{len(markets):,} resolved markets above ${args.min_volume:,.0f} volume")
     if markets.empty:
         raise RuntimeError("no resolved markets returned; check the Gamma API")
@@ -899,6 +909,10 @@ def main() -> int:
     ap.add_argument("--probe", default="",
                     help="probe candidate endpoints for this username and "
                          "report what each returns; makes no other calls")
+    ap.add_argument("--days-back", type=int, default=730,
+                    help="how far back the date-windowed market crawl reaches")
+    ap.add_argument("--window-days", type=int, default=14,
+                    help="width of each crawl window before adaptive splitting")
     ap.add_argument("--probe-pagination", action="store_true",
                     help="measure how deep the market listing paginates")
     ap.add_argument("--longshot", action="store_true",
