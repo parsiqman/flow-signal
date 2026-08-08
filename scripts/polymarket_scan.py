@@ -32,7 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from polymarket import client, execution, fixtures, longshot, wallets   # noqa: E402
+from polymarket import book, client, execution, fixtures, longshot, wallets   # noqa: E402
 
 
 # Stage-by-stage market-pool counts. Logs are not retrievable from a finished
@@ -195,6 +195,64 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         f"{trades.groupby('wallet')['market_id'].nunique().median():.0f}")
     meta["mode"] = "live"
     return trades, meta
+
+
+def measure_books(args) -> int:
+    """
+    Measure what the book actually costs in the bands the rule trades.
+
+    The walk-forward says 5.27c/share net, but that net was computed against an
+    ASSUMED 1c half-spread while break-even sits at 6.27c. The whole result
+    therefore rests on a number that was typed rather than measured, in the
+    place where that is most dangerous.
+    """
+    section("ORDER BOOK COST, BY PRICE BAND")
+    cfg = client.ClientConfig(cache_dir=None, rate_limit_s=args.rate_limit)
+    api = client.PolymarketClient(cfg)
+
+    mkts = book.open_markets(api, min_volume=args.min_volume)
+    log(f"{len(mkts):,} open markets above ${args.min_volume:,.0f} volume")
+    if not mkts:
+        raise RuntimeError("no open markets returned; cannot measure a book")
+
+    books = book.sample_books(api, mkts, max_books=args.max_books)
+    log(f"{len(books):,} token books sampled")
+    if books.empty:
+        raise RuntimeError("no books returned; check the CLOB /book shape")
+    log(f"one-sided (no bid or no ask): {int(books['one_sided'].sum()):,}")
+
+    costs = book.cost_by_band(books)
+    log("\nmeasured cost and depth by band:")
+    log(costs.to_string(index=False))
+
+    # The rule's own bands, with each charged its OWN measured spread rather
+    # than one average across bands.
+    fitted = {"0.05-0.10": -4.44, "0.10-0.20": -8.81,
+              "0.80-0.90": 8.54, "0.90-0.95": 4.30}
+    gross = {b: abs(v) for b, v in fitted.items()}
+    net = book.edge_after_measured_cost(gross, costs)
+    log("\nfitted edge against MEASURED spread, per band:")
+    log(net.to_string(index=False) if len(net) else "  no overlap with rule bands")
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    costs.to_csv(out / "book_costs.csv", index=False)
+    if len(net):
+        net.to_csv(out / "edge_after_book.csv", index=False)
+    survive = int(net["survives"].sum()) if len(net) else 0
+    lines = ["# Order book cost by band", "",
+             f"Sampled {len(books):,} token books across {len(mkts):,} open "
+             f"markets.", "",
+             f"**{survive} of {len(net)} rule bands keep a positive edge against "
+             f"their own measured half-spread.**", "",
+             costs.to_markdown(index=False), ""]
+    if len(net):
+        lines += ["## Rule bands, net of measured cost", "",
+                  net.to_markdown(index=False), ""]
+    (out / "REPORT.md").write_text("\n".join(lines))
+    section("VERDICT")
+    log(f"{survive} of {len(net)} rule bands survive their measured spread")
+    return 0
 
 
 def probe_pagination(args) -> int:
@@ -922,6 +980,9 @@ def main() -> int:
                     help="how far back the date-windowed market crawl reaches")
     ap.add_argument("--window-days", type=int, default=14,
                     help="width of each crawl window before adaptive splitting")
+    ap.add_argument("--books", action="store_true",
+                    help="measure live order-book spread and depth by band")
+    ap.add_argument("--max-books", type=int, default=400)
     ap.add_argument("--probe-pagination", action="store_true",
                     help="measure how deep the market listing paginates")
     ap.add_argument("--longshot", action="store_true",
@@ -936,6 +997,8 @@ def main() -> int:
     args = ap.parse_args()
 
     out = Path(args.out)
+    if args.books:
+        return measure_books(args)
     if args.probe_pagination:
         return probe_pagination(args)
     if args.probe:
