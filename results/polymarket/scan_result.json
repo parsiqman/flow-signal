@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07 19:43 UTC",
+  "generated_at": "2026-08-08 10:57 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -31,111 +31,111 @@
   "meta": {
     "by_category": {
       "other": {
-        "pool": 11888,
+        "pool": 10923,
         "sampled": 2000,
-        "fetched": 1998
+        "fetched": 2000
       },
       "crypto": {
-        "pool": 3049,
+        "pool": 3767,
         "sampled": 2000,
         "fetched": 2000
       },
       "sports": {
-        "pool": 8332,
+        "pool": 8314,
         "sampled": 2000,
         "fetched": 2000
       },
       "politics": {
-        "pool": 1459,
-        "sampled": 1459,
-        "fetched": 1459
+        "pool": 1219,
+        "sampled": 1219,
+        "fetched": 1219
       },
       "entertainment": {
-        "pool": 306,
-        "sampled": 306,
-        "fetched": 306
-      },
-      "weather": {
-        "pool": 1221,
-        "sampled": 1221,
-        "fetched": 1221
+        "pool": 503,
+        "sampled": 503,
+        "fetched": 503
       },
       "econ": {
-        "pool": 176,
-        "sampled": 176,
-        "fetched": 176
+        "pool": 165,
+        "sampled": 165,
+        "fetched": 165
+      },
+      "weather": {
+        "pool": 1125,
+        "sampled": 1125,
+        "fetched": 1125
       }
     },
-    "n_raw_trades": 975089,
-    "n_wallets_discovered": 112249
+    "n_raw_trades": 962152,
+    "n_wallets_discovered": 112378
   },
   "market_pool": {
-    "raw_markets_fetched": 40114,
-    "with_winning_outcome": 39970,
+    "raw_markets_fetched": 39744,
+    "with_winning_outcome": 39570,
     "after_volume_filter": null,
-    "resolved_pool": 26431,
+    "resolved_pool": 26016,
     "outcome_price_samples": [
       "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
       "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
       "[\"1\", \"0\"]",
-      "[\"0\", \"1\"]",
-      "[\"0\", \"1\"]",
-      "[\"0\", \"1\"]",
       "[\"0\", \"1\"]",
       "[\"0\", \"1\"]"
     ],
     "category_pool": {
-      "other": 11888,
-      "sports": 8332,
-      "crypto": 3049,
-      "politics": 1459,
-      "weather": 1221,
-      "entertainment": 306,
-      "econ": 176
+      "other": 10923,
+      "sports": 8314,
+      "crypto": 3767,
+      "politics": 1219,
+      "weather": 1125,
+      "entertainment": 503,
+      "econ": 165
     }
   },
-  "verdict": "YES, MEASURABLY. The rule pays 4.41c/share net of a 1.00c spread out of sample (t=3.27), and exceeds what honest prices produce by chance. Break-even half-spread is 5.41c -- check that against a real book before sizing anything.",
+  "verdict": "YES, MEASURABLY. The rule pays 5.27c/share net of a 1.00c spread out of sample (t=4.79), and exceeds what honest prices produce by chance. Break-even half-spread is 6.27c -- check that against a real book before sizing anything.",
   "longshot": {
     "split_ts": 1750896000.0,
-    "n_markets_train": 4563,
-    "n_markets_test": 4597,
-    "rule": "SELL 0.05-0.10 (fitted -4.99c); SELL 0.10-0.20 (fitted -7.37c); BUY  0.80-0.90 (fitted +6.63c); BUY  0.90-0.95 (fitted +4.55c)",
+    "n_markets_train": 4490,
+    "n_markets_test": 4522,
+    "rule": "SELL 0.05-0.10 (fitted -4.44c); SELL 0.10-0.20 (fitted -8.81c); BUY  0.80-0.90 (fitted +8.54c); BUY  0.90-0.95 (fitted +4.30c)",
     "bar_used": 2.57,
     "n_bands_tested": 10,
-    "calibration_train": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05       4435  280.3  ... -0.0021  0.0060   -0.35\n1  0.05-0.10       2280  185.4  ... -0.0499  0.0115   -4.35\n2  0.10-0.20       2065  236.7  ... -0.0737  0.0172   -4.29\n3  0.20-0.35       1777  188.5  ... -0.0406  0.0312   -1.30\n4  0.35-0.50       1433  170.7  ... -0.0332  0.0375   -0.88\n5  0.50-0.65       1458  150.3  ...  0.0428  0.0396    1.08\n6  0.65-0.80       1854  203.3  ...  0.0309  0.0299    1.03\n7  0.80-0.90       2139  261.0  ...  0.0663  0.0160    4.15\n8  0.90-0.95       2265  185.9  ...  0.0455  0.0109    4.17\n9  0.95-1.00       4422  281.5  ...  0.0021  0.0060    0.35\n\n[10 rows x 8 columns]",
-    "calibration_test": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05       4539  194.2  ... -0.0012  0.0072   -0.17\n1  0.05-0.10       2134  100.2  ... -0.0409  0.0181   -2.26\n2  0.10-0.20       1772  122.8  ... -0.0720  0.0242   -2.97\n3  0.20-0.35       1500   66.4  ... -0.0766  0.0497   -1.54\n4  0.35-0.50       1276  106.1  ...  0.0348  0.0485    0.72\n5  0.50-0.65       1267  114.0  ... -0.0256  0.0467   -0.55\n6  0.65-0.80       1546   74.6  ...  0.0724  0.0463    1.57\n7  0.80-0.90       1833  130.0  ...  0.0543  0.0246    2.20\n8  0.90-0.95       2158   87.5  ...  0.0494  0.0144    3.42\n9  0.95-1.00       4534  198.1  ...  0.0010  0.0071    0.14\n\n[10 rows x 8 columns]",
+    "calibration_train": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05       4399  294.8  ... -0.0026  0.0058   -0.44\n1  0.05-0.10       2124  317.9  ... -0.0444  0.0099   -4.50\n2  0.10-0.20       1894  270.2  ... -0.0881  0.0148   -5.96\n3  0.20-0.35       1603  136.3  ... -0.0758  0.0346   -2.19\n4  0.35-0.50       1251   90.8  ... -0.0291  0.0517   -0.56\n5  0.50-0.65       1276   96.7  ...  0.0302  0.0497    0.61\n6  0.65-0.80       1693  148.6  ...  0.0774  0.0323    2.40\n7  0.80-0.90       1966  281.4  ...  0.0854  0.0133    6.41\n8  0.90-0.95       2115  397.3  ...  0.0430  0.0077    5.55\n9  0.95-1.00       4395  297.3  ...  0.0025  0.0058    0.43\n\n[10 rows x 8 columns]",
+    "calibration_test": "        band  n_markets  n_eff  ...    edge      se  t_stat\n0  0.00-0.05       4470  475.4  ... -0.0029  0.0046   -0.63\n1  0.05-0.10       2165  210.3  ... -0.0550  0.0098   -5.61\n2  0.10-0.20       1762  156.6  ... -0.0733  0.0212   -3.46\n3  0.20-0.35       1472  169.0  ... -0.0827  0.0305   -2.71\n4  0.35-0.50       1285   51.7  ...  0.0207  0.0695    0.30\n5  0.50-0.65       1280   41.3  ... -0.0281  0.0777   -0.36\n6  0.65-0.80       1521  177.2  ...  0.0880  0.0288    3.06\n7  0.80-0.90       1827  177.6  ...  0.0680  0.0193    3.51\n8  0.90-0.95       2194  133.2  ...  0.0537  0.0098    5.50\n9  0.95-1.00       4469  475.9  ...  0.0024  0.0046    0.53\n\n[10 rows x 8 columns]",
     "out_of_sample": {
-      "n_markets": 2567,
-      "n_eff": 200.2,
+      "n_markets": 2588,
+      "n_eff": 273.7,
       "avg_price": 0.8913,
-      "gross_edge_cents": 5.41,
+      "gross_edge_cents": 6.27,
       "cost_cents": 1.0,
-      "net_edge_cents": 4.41,
-      "t_stat_net": 3.27,
-      "roi_net": 0.0495,
-      "breakeven_half_spread_cents": 5.41,
+      "net_edge_cents": 5.27,
+      "t_stat_net": 4.79,
+      "roi_net": 0.0591,
+      "breakeven_half_spread_cents": 6.27,
       "verdict": "net edge survives the spread"
     }
   },
   "null": {
-    "real_net_edge_cents": 4.67,
-    "null_mean_cents": -38.145,
-    "null_sd_cents": 0.454,
+    "real_net_edge_cents": 5.46,
+    "null_mean_cents": -1.584,
+    "null_sd_cents": 1.077,
     "p_value": 0.0,
     "n_draws": 120,
     "verdict": "edge exceeds what honest prices produce by chance"
   },
   "power": {
-    "median_mde_cents": 4.27,
-    "bands_that_can_see_the_effect": 7,
+    "median_mde_cents": 3.61,
+    "bands_that_can_see_the_effect": 6,
     "n_bands": 10,
     "documented_effect_cents": [
       2.0,
       8.0
     ],
     "underpowered": false,
-    "verdict": "adequately powered: the typical band resolves down to 4.3c, inside the 2-8c effect range"
+    "verdict": "adequately powered: the typical band resolves down to 3.6c, inside the 2-8c effect range"
   },
-  "n_wallets_scanned": 112249,
+  "n_wallets_scanned": 112378,
   "n_scored": 0
 }
