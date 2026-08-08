@@ -892,3 +892,74 @@ def sample_response_shapes() -> dict:
             "outcomePrices": '["1", "0"]', "volumeNum": 250000.0,
         }],
     }
+
+
+def markets_by_windows(client: "PolymarketClient", days_back: int = 730,
+                       window_days: int = 14, max_depth: int = 6,
+                       page_cap: int = 100) -> pd.DataFrame:
+    """
+    Crawl the market listing in date windows, splitting any window that truncates.
+
+    Necessary because Gamma's listing cannot be paged. The probe that settled
+    this measured two things:
+
+      - `offset` is IGNORED. Five pages at offsets 0..2000 returned five
+        identical pages: 500 rows each, 500 distinct markets in total. The
+        loop in `resolved_markets` looked like it was crawling and was in fact
+        re-reading page one, which is why a requested pool of 3,000 arrived as
+        333 and the longshot calibration had an effective sample of 30 a band.
+      - a query carrying date filters returns at most 100 rows whatever
+        `limit` says.
+
+    So the only way through is many narrow windows. The important part is the
+    SPLIT: a window that comes back exactly at the cap is assumed truncated and
+    is halved and re-asked, recursively. A window returning fewer than the cap
+    is complete, and that is a property we can check rather than hope for --
+    which matters, because a silently truncated window looks exactly like a
+    quiet stretch of the calendar.
+    """
+    import datetime as dt
+
+    now = dt.datetime.now(dt.timezone.utc)
+    rows: list[dict] = []
+    seen: set[str] = set()
+    truncated = 0
+
+    def fetch(lo: dt.datetime, hi: dt.datetime, depth: int) -> None:
+        nonlocal truncated
+        try:
+            batch = client._get(f"{GAMMA}/markets", {
+                "closed": "true", "limit": page_cap,
+                "end_date_min": lo.strftime("%Y-%m-%d"),
+                "end_date_max": hi.strftime("%Y-%m-%d"),
+                "order": "endDate", "ascending": "false"})
+        except Exception:                                    # noqa: BLE001
+            return
+        if not isinstance(batch, list):
+            return
+        # At the cap means "there was probably more". Split rather than accept
+        # a silent partial answer -- the whole point of this function.
+        if len(batch) >= page_cap and depth < max_depth and (hi - lo).days > 1:
+            mid = lo + (hi - lo) / 2
+            fetch(lo, mid, depth + 1)
+            fetch(mid, hi, depth + 1)
+            return
+        if len(batch) >= page_cap:
+            truncated += 1                 # bottomed out; window still full
+        for r in batch:
+            cid = str(r.get("conditionId") or r.get("condition_id") or "")
+            if cid and cid not in seen:
+                seen.add(cid)
+                rows.append(r)
+
+    hi = now
+    while hi > now - dt.timedelta(days=days_back):
+        lo = hi - dt.timedelta(days=window_days)
+        fetch(lo, hi, 0)
+        hi = lo
+
+    df = _markets_to_frame(rows)
+    df.attrs["n_windows_truncated"] = truncated
+    df.attrs["crawl"] = (f"date windows, {window_days}d, {days_back}d back, "
+                         f"cap {page_cap}")
+    return df

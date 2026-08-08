@@ -32,7 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from polymarket import client, execution, fixtures, longshot, wallets   # noqa: E402
+from polymarket import book, client, execution, fixtures, longshot, wallets   # noqa: E402
 
 
 # Stage-by-stage market-pool counts. Logs are not retrievable from a finished
@@ -71,8 +71,18 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     cfg = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
     api = client.PolymarketClient(cfg)
 
-    markets = api.resolved_markets(limit=args.market_pool,
-                                   min_volume=args.min_volume)
+    # Date windows, not offsets. The pagination probe measured that Gamma
+    # ignores `offset` outright -- five pages at offsets 0..2000 returned the
+    # same 500 markets -- so the previous loop re-read page one and the pool
+    # arrived at 333 when 3,000 were asked for.
+    markets = client.markets_by_windows(api, days_back=args.days_back,
+                                        window_days=args.window_days)
+    log(f"  crawl                    : {markets.attrs.get('crawl', '?')}")
+    log(f"  windows still truncated  : "
+        f"{markets.attrs.get('n_windows_truncated', '?')}")
+    if args.min_volume:
+        markets = markets[markets["volume"].fillna(0) >= args.min_volume]
+    markets = markets.reset_index(drop=True)
     log(f"{len(markets):,} resolved markets above ${args.min_volume:,.0f} volume")
     if markets.empty:
         raise RuntimeError("no resolved markets returned; check the Gamma API")
@@ -117,7 +127,8 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         log("")
         raw, meta = client.discover_stratified(
             api, resolved, per_category=args.per_category, seed=args.seed,
-            categories=args.categories.split(",") if args.categories else None)
+            categories=args.categories.split(",") if args.categories else None,
+            max_trades_per_market=args.max_trades_per_market)
     else:
         raw, meta = client.discover_population(api, resolved,
                                                n_markets=args.markets,
@@ -184,6 +195,90 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         f"{trades.groupby('wallet')['market_id'].nunique().median():.0f}")
     meta["mode"] = "live"
     return trades, meta
+
+
+def measure_books(args) -> int:
+    """
+    Measure what the book actually costs in the bands the rule trades.
+
+    The walk-forward says 5.27c/share net, but that net was computed against an
+    ASSUMED 1c half-spread while break-even sits at 6.27c. The whole result
+    therefore rests on a number that was typed rather than measured, in the
+    place where that is most dangerous.
+    """
+    section("ORDER BOOK COST, BY PRICE BAND")
+    cfg = client.ClientConfig(cache_dir=None, rate_limit_s=args.rate_limit)
+    api = client.PolymarketClient(cfg)
+
+    mkts = book.open_markets(api, min_volume=args.min_volume)
+    log(f"{len(mkts):,} open markets above ${args.min_volume:,.0f} volume")
+    if not mkts:
+        raise RuntimeError("no open markets returned; cannot measure a book")
+
+    books = book.sample_books(api, mkts, max_books=args.max_books)
+    log(f"{len(books):,} token books sampled")
+    log("Sampled across end-date windows, NOT in volume order: ordering by")
+    log("volume measures the tightest books in the venue and calls it the cost")
+    log("of trading, which biases the spread down in the flattering direction.")
+    if books.empty:
+        raise RuntimeError("no books returned; check the CLOB /book shape")
+    log(f"one-sided (no bid or no ask): {int(books['one_sided'].sum()):,}")
+
+    costs = book.cost_by_band(books)
+    log("\nmeasured cost and depth by band:")
+    log(costs.to_string(index=False))
+
+    # A median over a handful of books is not a measurement. The first run put
+    # 170 of 194 books in the two near-resolution buckets and left four to six
+    # in each band the rule trades.
+    thin = costs[costs["n_tokens"] < 30]
+    if len(thin):
+        log("\n  WARNING: these bands are too thinly sampled to trust:")
+        log(thin[["band", "n_tokens", "median_half_spread_cents"]]
+            .to_string(index=False))
+
+    # The rule's own bands, with each charged its OWN measured spread rather
+    # than one average across bands.
+    fitted = {"0.05-0.10": -4.44, "0.10-0.20": -8.81,
+              "0.80-0.90": 8.54, "0.90-0.95": 4.30}
+    gross = {b: abs(v) for b, v in fitted.items()}
+    net = book.edge_after_measured_cost(gross, costs)
+    log("\nfitted edge against MEASURED spread, per band:")
+    log(net.to_string(index=False) if len(net) else "  no overlap with rule bands")
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    costs.to_csv(out / "book_costs.csv", index=False)
+    if len(net):
+        net.to_csv(out / "edge_after_book.csv", index=False)
+    survive = int(net["survives"].sum()) if len(net) else 0
+    rule_bands = set(net["band"]) if len(net) else set()
+    thin_rule = costs[costs["band"].astype(str).isin(rule_bands)
+                      & (costs["n_tokens"] < 30)]
+    trustworthy = len(thin_rule) == 0
+    lines = ["# Order book cost by band", "",
+             f"Sampled {len(books):,} token books across {len(mkts):,} open "
+             f"markets.", "",
+             f"**{survive} of {len(net)} rule bands keep a positive edge against "
+             f"their own measured half-spread.**", "",
+             (f"NOT YET TRUSTWORTHY: {len(thin_rule)} of the rule's bands are "
+              f"sampled by fewer than 30 books. A median over a handful of "
+              f"books is not a measurement."
+              if not trustworthy else
+              "Every rule band is sampled by at least 30 books."), "",
+             costs.to_markdown(index=False), ""]
+    if len(net):
+        lines += ["## Rule bands, net of measured cost", "",
+                  net.to_markdown(index=False), ""]
+    (out / "REPORT.md").write_text("\n".join(lines))
+    section("VERDICT")
+    if not trustworthy:
+        log(f"{survive} of {len(net)} rule bands survive their measured spread, "
+            f"BUT {len(thin_rule)} of those bands rest on fewer than 30 books. "
+            f"Treat as preliminary.")
+    else:
+        log(f"{survive} of {len(net)} rule bands survive their measured spread")
+    return 0
 
 
 def probe_pagination(args) -> int:
@@ -899,6 +994,21 @@ def main() -> int:
     ap.add_argument("--probe", default="",
                     help="probe candidate endpoints for this username and "
                          "report what each returns; makes no other calls")
+    ap.add_argument("--max-trades-per-market", type=int, default=5000,
+                    help="cap fills fetched per market. For the longshot "
+                         "calibration the sample size is MARKETS, not fills -- "
+                         "each market contributes one observation per band "
+                         "however many times it traded -- so a low cap buys "
+                         "several times the market coverage for the same "
+                         "number of requests, which is what the power gate "
+                         "actually needs.")
+    ap.add_argument("--days-back", type=int, default=730,
+                    help="how far back the date-windowed market crawl reaches")
+    ap.add_argument("--window-days", type=int, default=14,
+                    help="width of each crawl window before adaptive splitting")
+    ap.add_argument("--books", action="store_true",
+                    help="measure live order-book spread and depth by band")
+    ap.add_argument("--max-books", type=int, default=400)
     ap.add_argument("--probe-pagination", action="store_true",
                     help="measure how deep the market listing paginates")
     ap.add_argument("--longshot", action="store_true",
@@ -913,6 +1023,8 @@ def main() -> int:
     args = ap.parse_args()
 
     out = Path(args.out)
+    if args.books:
+        return measure_books(args)
     if args.probe_pagination:
         return probe_pagination(args)
     if args.probe:

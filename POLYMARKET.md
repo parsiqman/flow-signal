@@ -10,6 +10,56 @@ known ground truth.
 
 ---
 
+## The longshot rule, and what actually kills it (2026-08-08)
+
+Walk-forward on 9,160 markets (4,563 fit / 4,597 evaluated, disjoint):
+
+| | |
+|---|---|
+| rule | SELL 0.05-0.10, SELL 0.10-0.20, BUY 0.80-0.90, BUY 0.90-0.95 |
+| power | adequately powered: 3.6c detectable vs a 2-8c effect |
+| out-of-sample gross | 6.27 c/share |
+| t (net of 1c assumed spread) | 4.79 |
+| honest-price null | mean -1.58c, p < 0.01 |
+
+The rule's shape was not specified in advance and came back textbook: sell
+cheap claims, buy dear ones, nothing in the middle. The null sits where theory
+says it should -- near -1c, because the null still pays the spread -- which is
+the first null in this repo demonstrably doing its job.
+
+**Then the book was measured, and the binding constraint is not the spread.**
+
+| band | half-spread | median depth at touch |
+|---|---|---|
+| 0.05-0.10 | 4.92c | $21 |
+| 0.10-0.20 | 1.00c | $46 |
+| 0.80-0.90 | 1.00c | $245 |
+| 0.90-0.95 | 0.85c | $54 |
+
+Three of four bands keep a positive edge net of their own measured spread. The
+cheapest does not: 4.44c of edge against a 4.92c half-spread.
+
+The depth column is the finding. **Tens to low hundreds of dollars at the
+touch.** At ~7.5c/share on an 85c token that is roughly $20 of expected profit
+per market. The edge is real, survives out of sample, and beats a correct null
+-- and is capacity-constrained to pocket money per opportunity. Which is what
+longshot.py's own docstring predicted of a bias whose counterparty is
+recreational: that is why it persists, and why it cannot be scaled.
+
+**How nearly this was reported the other way.** The first book run said every
+band survives, with half-spreads of 0.05-0.5c and median depth up to $448,000.
+It had asked for markets ordered by VOLUME DESCENDING -- measuring the
+tightest, deepest books in the venue and calling it the cost of trading.
+Removing that one sort key moved the measured spread ~20x wider and depth
+~1000x thinner, and flipped a band from surviving to failing. Sorting by the
+thing you are about to measure is the same error as leaderboard seeding, which
+this repo refuses by design for wallets; it walked in through the book sampler
+instead.
+
+Still preliminary: the rule's bands rest on 1-14 books each, under the 30-book
+threshold the report now flags. The direction of the correction is not in
+doubt; the exact numbers are.
+
 ## The first real wallet (2026-08-07)
 
 One account was named from outside this dataset — a weather specialist,

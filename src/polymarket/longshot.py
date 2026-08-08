@@ -262,23 +262,46 @@ def null_check(rule: LongshotRule, test: pd.DataFrame, n_draws: int = 200,
     if "net_edge_cents" not in real:
         return {"verdict": "rule could not be evaluated on the real tape"}
 
-    # Outcomes are a property of the MARKET, so they are redrawn once per
-    # market and broadcast to its fills. Drawing per fill would let one market
-    # both win and lose, which cannot happen and would flatter the null.
+    # Outcomes are a property of the MARKET, and a binary market has TWO
+    # tokens whose fates are opposite. Fills within a market split into at most
+    # two groups by which token they bought, and `outcome` is constant inside a
+    # group. Drawing one Bernoulli per market and broadcasting it to every fill
+    # -- the first version here -- gave both tokens the same fate, which is
+    # impossible, and put the null mean at -38 cents instead of zero. That is
+    # the SECOND time this null has been centred somewhere the strategy cannot
+    # fail; the giveaway both times was a null mean far from zero.
     t = normalise_trades(test)
-    t = t[t["size"].gt(0)]
-    ref = (t.assign(_wp=t["price"] * t["size"])
-            .groupby("market_id")
+    t = t[t["size"].gt(0) & t["outcome"].notna()]
+    if t.empty:
+        return {"verdict": "no resolved trades to build a null from"}
+
+    # Recover the two token groups per market and each group's traded price.
+    grp = (t.assign(_wp=t["price"] * t["size"])
+            .groupby(["market_id", "outcome"])
             .agg(_wp=("_wp", "sum"), _sz=("size", "sum")))
-    p_market = (ref["_wp"] / ref["_sz"]).clip(0.001, 0.999)
+    grp["price"] = grp["_wp"] / grp["_sz"]
+
+    winners: dict = {}
+    for mid, g in grp.groupby(level=0):
+        legs = g.reset_index()
+        # Probability the actually-winning token wins, under honest prices.
+        row = legs[legs["outcome"] == 1.0]
+        p_win = float(row["price"].iloc[0]) if len(row) else float(
+            1.0 - legs["price"].iloc[0])
+        winners[mid] = min(max(p_win, 0.001), 0.999)
+
+    mids = list(winners)
+    probs = np.array([winners[m] for m in mids], dtype=float)
 
     draws = []
     for _ in range(n_draws):
-        drawn = pd.Series(
-            (rng.random(len(p_market)) < p_market.to_numpy()).astype(float),
-            index=p_market.index)
+        # One draw per market decides whether the token that really won wins
+        # again. Every fill keeps its own side, so the two tokens stay
+        # opposite and the price distribution is untouched.
+        keeps = pd.Series((rng.random(len(mids)) < probs), index=mids)
         fake = test.copy()
-        fake["outcome"] = fake["market_id"].map(drawn)
+        flip = ~fake["market_id"].map(keeps).astype(bool)
+        fake["outcome"] = np.where(flip, 1.0 - fake["outcome"], fake["outcome"])
         r = evaluate(rule, fake, half_spread_cents=half_spread_cents)
         if "net_edge_cents" in r:
             draws.append(r["net_edge_cents"])
