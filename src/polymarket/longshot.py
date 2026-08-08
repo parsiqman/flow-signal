@@ -413,3 +413,98 @@ def power_verdict(cal: pd.DataFrame, bar: float) -> dict:
                     f"{med:.1f}c, inside the {DOCUMENTED_EFFECT_CENTS[0]:.0f}-"
                     f"{DOCUMENTED_EFFECT_CENTS[1]:.0f}c effect range"),
     }
+
+
+def loss_correlation(rule: LongshotRule, trades: pd.DataFrame,
+                     bucket_seconds: float = 86_400.0,
+                     group_on: str = "resolved_at") -> dict:
+    """
+    Intraclass correlation of per-market rule P&L, within resolution buckets.
+
+    This is the single parameter the capital model turns on. Ruin arrives at a
+    correlation near 0.07, and everything above that number is arithmetic, so
+    measuring it is the difference between "ruled out" and "ruled out for a
+    reason somebody checked".
+
+    Resolution DAY is the grouping because that is how the risk actually
+    arrives: a book of long favourites does not lose gradually, it loses on the
+    days when upsets happen to cluster -- one election night, one weekend of
+    sport, one crypto move that settles a dozen derived markets at once.
+
+    One-way ANOVA on per-market P&L:
+
+        ICC = (MSB - MSW) / (MSB + (m - 1) * MSW)
+
+    with m the average bucket size. This is the same rho the Gaussian copula in
+    `capacity.drawdown_simulation` takes, so the two connect directly.
+
+    Also returns the effective number of INDEPENDENT bets,
+    n / (1 + (m - 1) * ICC). When that number is far below the trade count, the
+    breadth argument -- 1,294 bets, therefore diversified -- is false, and it
+    is false in the direction that flatters the strategy.
+    """
+    if rule.is_empty():
+        return {"verdict": "rule is empty; no P&L to correlate"}
+    t = normalise_trades(trades)
+    t = t[t["eff_outcome"].notna() & t["size"].gt(0)]
+    t = t[(t["eff_price"] > 0) & (t["eff_price"] < 1)]
+    if t.empty or group_on not in t.columns:
+        return {"verdict": f"no usable trades, or {group_on!r} missing"}
+
+    labels = _band_labels(rule.bands)
+    t = t.assign(band=pd.cut(t["eff_price"], bins=list(rule.bands), labels=labels,
+                             include_lowest=True))
+    t = t[t["band"].astype(str).isin(rule.side)]
+    if t.empty:
+        return {"verdict": "no trades fell in the rule's bands"}
+
+    side = t["band"].astype(str).map(rule.side).astype(float)
+    t = t.assign(
+        _p=np.where(side > 0, t["eff_price"], 1.0 - t["eff_price"]),
+        _o=np.where(side > 0, t["eff_outcome"], 1.0 - t["eff_outcome"]))
+
+    per = (t.assign(_wp=t["_p"] * t["size"], _wo=t["_o"] * t["size"])
+            .groupby("market_id")
+            .agg(_wp=("_wp", "sum"), _wo=("_wo", "sum"), _sz=("size", "sum"),
+                 ts=(group_on, "min"))
+            .reset_index())
+    per["pnl"] = per["_wo"] / per["_sz"] - per["_wp"] / per["_sz"]
+    per["bucket"] = (per["ts"] // bucket_seconds).astype("Int64")
+    per = per[per["bucket"].notna()]
+    if len(per) < 30:
+        return {"verdict": f"only {len(per)} markets; too few to estimate"}
+
+    groups = [g["pnl"].to_numpy() for _, g in per.groupby("bucket") if len(g) >= 1]
+    k = len(groups)
+    n = int(sum(len(g) for g in groups))
+    if k < 2 or n <= k:
+        return {"verdict": "not enough distinct resolution buckets"}
+
+    grand = float(np.mean(np.concatenate(groups)))
+    ssb = float(sum(len(g) * (g.mean() - grand) ** 2 for g in groups))
+    ssw = float(sum(((g - g.mean()) ** 2).sum() for g in groups))
+    msb = ssb / (k - 1)
+    msw = ssw / (n - k)
+    sizes = np.array([len(g) for g in groups], dtype=float)
+    # Unbiased average group size for unbalanced designs.
+    m = (n - (sizes ** 2).sum() / n) / (k - 1) if k > 1 else 1.0
+    icc = (msb - msw) / (msb + (m - 1) * msw) if (msb + (m - 1) * msw) > 0 else 0.0
+    icc = float(max(icc, 0.0))
+    n_eff = n / (1.0 + (m - 1) * icc) if m > 1 else float(n)
+
+    return {
+        "n_markets": n,
+        "n_buckets": k,
+        "avg_bucket_size": round(float(m), 2),
+        "icc": round(icc, 4),
+        "effective_independent_bets": round(float(n_eff), 1),
+        "breadth_lost_pct": round(100.0 * (1 - n_eff / n), 1),
+        "ruin_threshold_icc": 0.07,
+        "verdict": (f"MEASURED correlation {icc:.3f} is ABOVE the ~0.07 that "
+                    f"wipes out the capital base; the breadth argument is "
+                    f"false and the strategy is ruled out on risk"
+                    if icc > 0.07 else
+                    f"MEASURED correlation {icc:.3f} is BELOW the ~0.07 ruin "
+                    f"threshold; the capital model's pessimistic case does not "
+                    f"hold and this needs re-examining"),
+    }

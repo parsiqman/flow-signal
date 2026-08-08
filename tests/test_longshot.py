@@ -281,6 +281,66 @@ def test_minimum_detectable_edge_falls_as_the_sample_grows():
     assert big["median_mde_cents"] < small["median_mde_cents"]
 
 
+# --- correlation: the parameter the capital model turns on -----------------
+
+def _clustered_tape(n_days=200, per_day=12, rho_like=0.9, seed=1):
+    """
+    Markets resolving on the same day share a common shock.
+
+    `rho_like` is the probability that a day's markets all follow that day's
+    common draw rather than an independent one -- a crude but transparent way
+    to dial in known clustering.
+    """
+    rng = np.random.default_rng(seed)
+    rows = []
+    mid = 0
+    for d in range(n_days):
+        common = float(rng.random() < 0.85)
+        for _ in range(per_day):
+            won = common if rng.random() < rho_like else float(rng.random() < 0.85)
+            rows.append({"wallet": "w", "market_id": mid, "timestamp": 0.0,
+                         "price": 0.85, "size": 100.0, "side": "BUY",
+                         "outcome": won, "resolved_at": float(d) * 86400.0})
+            mid += 1
+    return pd.DataFrame(rows)
+
+
+def _rule_for(band="0.80-0.90"):
+    return longshot.LongshotRule(bands=longshot.DEFAULT_BANDS, side={band: 1},
+                                 fitted_edge={band: 0.0})
+
+
+def test_correlation_is_near_zero_when_outcomes_are_independent():
+    tape = _clustered_tape(rho_like=0.0, seed=4)
+    r = longshot.loss_correlation(_rule_for(), tape)
+    assert r["icc"] < 0.05, r
+
+
+def test_correlation_is_detected_when_markets_share_a_resolution_day():
+    tape = _clustered_tape(rho_like=1.0, seed=4)
+    r = longshot.loss_correlation(_rule_for(), tape)
+    assert r["icc"] > 0.5, r
+
+
+def test_correlation_collapses_the_effective_number_of_bets():
+    """
+    The breadth argument -- 1,294 bets, therefore diversified -- is exactly
+    what this number falsifies, and it fails in the flattering direction.
+    """
+    tape = _clustered_tape(rho_like=1.0, seed=4)
+    r = longshot.loss_correlation(_rule_for(), tape)
+    assert r["effective_independent_bets"] < r["n_markets"] / 5
+    assert r["breadth_lost_pct"] > 80
+
+
+def test_the_ruin_threshold_is_carried_alongside_the_measurement():
+    """A measured number with no bar to compare it to decides nothing."""
+    tape = _clustered_tape(rho_like=0.5, seed=4)
+    r = longshot.loss_correlation(_rule_for(), tape)
+    assert r["ruin_threshold_icc"] == 0.07
+    assert ("ABOVE" in r["verdict"]) == (r["icc"] > 0.07)
+
+
 if __name__ == "__main__":
     fns = [f for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

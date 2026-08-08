@@ -622,6 +622,15 @@ def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
     log(longshot.minimum_detectable_edge(
         wf["calibration_test"], wf["bar_used"]).to_string(index=False))
 
+    section("LOSS CORRELATION (the parameter the capital model turns on)")
+    log("A book that is long favourites everywhere is ONE bet wearing many")
+    log("hats. Ruin arrives near an intraclass correlation of 0.07, so the")
+    log("breadth argument -- thousands of bets, therefore diversified -- lives")
+    log("or dies on this number.\n")
+    corr = longshot.loss_correlation(rule, trades)
+    for k, v in corr.items():
+        log(f"  {k:32} {v}")
+
     net = oos.get("net_edge_cents", 0.0)
     t = oos.get("t_stat_net", 0.0)
     if rule.is_empty() and pw.get("underpowered"):
@@ -651,7 +660,14 @@ def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
                    f"{oos.get('gross_edge_cents', 0):.2f}c gross against "
                    f"{oos.get('cost_cents', 0):.2f}c of cost.")
 
+    if corr.get("icc") is not None and corr["icc"] > corr["ruin_threshold_icc"]:
+        verdict = (f"{verdict} RISK: measured loss correlation "
+                   f"{corr['icc']:.3f} exceeds the ~0.07 that wipes out the "
+                   f"capital base; {corr['n_markets']:,} markets behave like "
+                   f"{corr['effective_independent_bets']:.0f} independent bets.")
+
     return {"verdict": verdict, "longshot": wf, "null": nul, "power": pw,
+            "loss_correlation": corr,
             "n_wallets_scanned": int(meta.get("n_wallets_discovered", 0)),
             "n_scored": 0}
 
