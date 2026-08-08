@@ -341,6 +341,39 @@ def test_the_ruin_threshold_is_carried_alongside_the_measurement():
     assert ("ABOVE" in r["verdict"]) == (r["icc"] > 0.07)
 
 
+def test_the_day_scale_is_not_blind_to_a_slow_regime_factor():
+    """
+    Pins the thing that was assumed and turned out false. A monthly factor
+    raises BETWEEN-day variance -- every day in a good month shifts together --
+    so day-level ICC tracks it rather than missing it. This test exists because
+    the opposite was asserted out loud before it was checked.
+    """
+    rng = np.random.default_rng(2)
+    rows, mid = [], 0
+    for d in range(360):
+        month_bias = 0.30 if (d // 30) % 2 == 0 else -0.30    # slow regime
+        for _ in range(10):
+            p_win = float(np.clip(0.85 + month_bias, 0.05, 0.99))
+            rows.append({"wallet": "w", "market_id": mid, "timestamp": 0.0,
+                         "price": 0.85, "size": 100.0, "side": "BUY",
+                         "outcome": float(rng.random() < p_win),
+                         "resolved_at": float(d) * 86400.0})
+            mid += 1
+    tape = pd.DataFrame(rows)
+    rule = _rule_for()
+    day = longshot.loss_correlation(rule, tape, bucket_seconds=86_400.0)
+    multi = longshot.loss_correlation_multiscale(rule, tape)
+    assert day["icc"] > 0.15, day                 # seen clearly at day scale
+    assert abs(multi["trend"]["max_icc"] - day["icc"]) < 0.10, multi["trend"]
+
+
+def test_independent_outcomes_stay_flat_across_every_scale():
+    tape = _clustered_tape(n_days=360, per_day=10, rho_like=0.0, seed=9)
+    multi = longshot.loss_correlation_multiscale(_rule_for(), tape)
+    assert multi["trend"]["scales_disagree"] is False, multi["trend"]
+    assert multi["trend"]["max_icc"] < 0.07, multi["trend"]
+
+
 if __name__ == "__main__":
     fns = [f for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

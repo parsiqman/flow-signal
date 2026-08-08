@@ -631,6 +631,19 @@ def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
     for k, v in corr.items():
         log(f"  {k:32} {v}")
 
+    log("\nAcross time scales, as a robustness check. Day-level ICC is NOT")
+    log("blind to a slow regime factor -- a monthly swing raises between-day")
+    log("variance too -- so the scales should agree. Disagreement means the")
+    log("grouping is wrong, not that the risk is hidden.")
+    multi = longshot.loss_correlation_multiscale(rule, trades)
+    for name, r in multi.items():
+        if name == "trend":
+            continue
+        log(f"  {name:9} icc={r.get('icc')} buckets={r.get('n_buckets')} "
+            f"avg_size={r.get('avg_bucket_size')}")
+    for k, v in (multi.get("trend") or {}).items():
+        log(f"  trend.{k:26} {v}")
+
     net = oos.get("net_edge_cents", 0.0)
     t = oos.get("t_stat_net", 0.0)
     if rule.is_empty() and pw.get("underpowered"):
@@ -666,8 +679,14 @@ def analyse_longshot(trades: pd.DataFrame, meta: dict, args) -> dict:
                    f"capital base; {corr['n_markets']:,} markets behave like "
                    f"{corr['effective_independent_bets']:.0f} independent bets.")
 
+    tr = multi.get("trend") or {}
+    if tr.get("scales_disagree"):
+        verdict = (f"{verdict} CAUTION: correlation scales disagree "
+                   f"({tr['max_icc']:.3f} at {tr['max_at_scale']} scale); check "
+                   f"the resolution grouping before trusting either number.")
+
     return {"verdict": verdict, "longshot": wf, "null": nul, "power": pw,
-            "loss_correlation": corr,
+            "loss_correlation": corr, "correlation_by_scale": multi,
             "n_wallets_scanned": int(meta.get("n_wallets_discovered", 0)),
             "n_scored": 0}
 
