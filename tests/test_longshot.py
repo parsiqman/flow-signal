@@ -182,6 +182,30 @@ def test_a_real_bias_beats_the_honest_price_null():
     assert "exceeds" in res["verdict"], res
 
 
+def test_the_null_keeps_the_two_tokens_of_a_market_opposite():
+    """
+    A binary market has two tokens whose fates are opposite. The first null
+    drew one Bernoulli per market and broadcast it to every fill, giving both
+    tokens the same fate -- impossible -- and centring the null at -38 cents.
+    Fills on both sides must stay complementary under the draw.
+    """
+    rows = []
+    for m in range(200):
+        won = float(m % 2)
+        rows.append({"wallet": "a", "market_id": m, "timestamp": 0.0,
+                     "price": 0.9, "size": 100.0, "side": "BUY",
+                     "outcome": won, "resolved_at": float(m)})
+        rows.append({"wallet": "b", "market_id": m, "timestamp": 1.0,
+                     "price": 0.1, "size": 100.0, "side": "BUY",
+                     "outcome": 1.0 - won, "resolved_at": float(m)})
+    tape = pd.DataFrame(rows)
+    rule = longshot.LongshotRule(bands=longshot.DEFAULT_BANDS,
+                                 side={"0.80-0.90": 1}, fitted_edge={"0.80-0.90": 0.0})
+    res = longshot.null_check(rule, tape, n_draws=40, half_spread_cents=0.0)
+    # Honest prices, so a rule buying the 0.8-0.9 band should break even.
+    assert abs(res["null_mean_cents"]) < 6.0, res
+
+
 def test_the_null_is_centred_near_zero_so_the_rule_can_actually_fail_it():
     """
     The null must be "prices are honest", not "price and outcome are
@@ -204,7 +228,8 @@ def test_the_null_redraws_whole_markets_not_individual_fills():
     """
     import inspect
     src = inspect.getsource(longshot.null_check)
-    assert 'groupby("market_id")' in src
+    assert 'groupby(["market_id", "outcome"])' in src
+    assert "1.0 - fake[\"outcome\"]" in src
 
 
 # --- walk-forward hygiene --------------------------------------------------
