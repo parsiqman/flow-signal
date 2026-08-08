@@ -1,0 +1,5 @@
+band,gross_edge_cents,measured_half_spread_cents,net_edge_cents,survives,median_depth_usd
+0.05-0.10,4.44,0.5,3.94,True,30007.01
+0.10-0.20,8.81,0.05,8.76,True,911.148
+0.80-0.90,8.54,0.05,8.49,True,6381.273
+0.90-0.95,4.3,0.5,3.8,True,448031.053
