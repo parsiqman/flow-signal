@@ -217,6 +217,9 @@ def measure_books(args) -> int:
 
     books = book.sample_books(api, mkts, max_books=args.max_books)
     log(f"{len(books):,} token books sampled")
+    log("Sampled across end-date windows, NOT in volume order: ordering by")
+    log("volume measures the tightest books in the venue and calls it the cost")
+    log("of trading, which biases the spread down in the flattering direction.")
     if books.empty:
         raise RuntimeError("no books returned; check the CLOB /book shape")
     log(f"one-sided (no bid or no ask): {int(books['one_sided'].sum()):,}")
@@ -224,6 +227,15 @@ def measure_books(args) -> int:
     costs = book.cost_by_band(books)
     log("\nmeasured cost and depth by band:")
     log(costs.to_string(index=False))
+
+    # A median over a handful of books is not a measurement. The first run put
+    # 170 of 194 books in the two near-resolution buckets and left four to six
+    # in each band the rule trades.
+    thin = costs[costs["n_tokens"] < 30]
+    if len(thin):
+        log("\n  WARNING: these bands are too thinly sampled to trust:")
+        log(thin[["band", "n_tokens", "median_half_spread_cents"]]
+            .to_string(index=False))
 
     # The rule's own bands, with each charged its OWN measured spread rather
     # than one average across bands.
@@ -240,18 +252,32 @@ def measure_books(args) -> int:
     if len(net):
         net.to_csv(out / "edge_after_book.csv", index=False)
     survive = int(net["survives"].sum()) if len(net) else 0
+    rule_bands = set(net["band"]) if len(net) else set()
+    thin_rule = costs[costs["band"].astype(str).isin(rule_bands)
+                      & (costs["n_tokens"] < 30)]
+    trustworthy = len(thin_rule) == 0
     lines = ["# Order book cost by band", "",
              f"Sampled {len(books):,} token books across {len(mkts):,} open "
              f"markets.", "",
              f"**{survive} of {len(net)} rule bands keep a positive edge against "
              f"their own measured half-spread.**", "",
+             (f"NOT YET TRUSTWORTHY: {len(thin_rule)} of the rule's bands are "
+              f"sampled by fewer than 30 books. A median over a handful of "
+              f"books is not a measurement."
+              if not trustworthy else
+              "Every rule band is sampled by at least 30 books."), "",
              costs.to_markdown(index=False), ""]
     if len(net):
         lines += ["## Rule bands, net of measured cost", "",
                   net.to_markdown(index=False), ""]
     (out / "REPORT.md").write_text("\n".join(lines))
     section("VERDICT")
-    log(f"{survive} of {len(net)} rule bands survive their measured spread")
+    if not trustworthy:
+        log(f"{survive} of {len(net)} rule bands survive their measured spread, "
+            f"BUT {len(thin_rule)} of those bands rest on fewer than 30 books. "
+            f"Treat as preliminary.")
+    else:
+        log(f"{survive} of {len(net)} rule bands survive their measured spread")
     return 0
 
 

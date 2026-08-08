@@ -92,6 +92,19 @@ def test_depth_at_the_touch_is_reported_because_capacity_is_the_real_limit():
     assert dear > cheap, "favourites should show more money at the touch"
 
 
+def test_open_markets_are_not_sampled_in_volume_order():
+    """
+    Ordering by volume measures the tightest books in the venue and calls it
+    the cost of trading. The rule trades the general population, so that
+    selection biases the spread downward -- toward making the strategy look
+    good. The first run did exactly this and got 4-6 books per rule band.
+    """
+    import inspect
+    src = inspect.getsource(book.open_markets)
+    assert '"order"' not in src, "no sort key may be sent with the request"
+    assert "end_date_min" in src
+
+
 def test_books_are_capped_so_a_probe_cannot_run_away():
     api = _Books()
     books = book.sample_books(api, api.markets, max_books=5)

@@ -46,26 +46,54 @@ def _token_ids(market: dict) -> list[str]:
     return [str(t) for t in raw] if isinstance(raw, (list, tuple)) else []
 
 
-def open_markets(client, limit: int = 500, min_volume: float = 1000.0
-                 ) -> list[dict]:
-    """Currently-tradeable markets, which are the only ones with a live book."""
-    out = []
-    try:
-        batch = client._get(f"{GAMMA}/markets",
-                            {"closed": "false", "active": "true",
-                             "limit": min(limit, 100), "order": "volumeNum",
-                             "ascending": "false"})
-    except Exception:                                        # noqa: BLE001
-        return out
-    if not isinstance(batch, list):
-        return out
-    for m in batch:
-        if not isinstance(m, dict):
+def open_markets(client, limit: int = 500, min_volume: float = 1000.0,
+                 days_forward: int = 365, window_days: int = 7) -> list[dict]:
+    """
+    Currently-tradeable markets, sampled across the calendar rather than by size.
+
+    Both details here are corrections to the first version, and both mattered.
+
+    It used to ask for one page ordered by volume descending. That returned 100
+    markets, of which 170 of the 194 token books landed in the 0-5c and 95-100c
+    buckets -- near-resolution markets with nothing to trade -- leaving FOUR to
+    SIX books in each of the bands the rule actually uses. A median over four
+    books is not a measurement.
+
+    Worse, ordering by volume selects the most liquid markets in the venue and
+    then reports how tight their books are. The rule would trade the general
+    population, so that selection biases the measured spread DOWNWARD, in the
+    direction that makes the strategy look good. Sampling across end-date
+    windows removes the ordering entirely.
+    """
+    import datetime as dt
+
+    now = dt.datetime.now(dt.timezone.utc)
+    out, seen = [], set()
+    hi = now
+    end = now + dt.timedelta(days=days_forward)
+    while hi < end and len(out) < limit:
+        lo, hi = hi, hi + dt.timedelta(days=window_days)
+        try:
+            batch = client._get(f"{GAMMA}/markets",
+                                {"closed": "false", "active": "true",
+                                 "limit": 100,
+                                 "end_date_min": lo.strftime("%Y-%m-%d"),
+                                 "end_date_max": hi.strftime("%Y-%m-%d")})
+        except Exception:                                    # noqa: BLE001
             continue
-        vol = pd.to_numeric(m.get("volumeNum"), errors="coerce")
-        if pd.notna(vol) and vol < min_volume:
+        if not isinstance(batch, list):
             continue
-        out.append(m)
+        for m in batch:
+            if not isinstance(m, dict):
+                continue
+            key = str(m.get("conditionId") or m.get("id") or "")
+            if key in seen:
+                continue
+            vol = pd.to_numeric(m.get("volumeNum"), errors="coerce")
+            if pd.notna(vol) and vol < min_volume:
+                continue
+            seen.add(key)
+            out.append(m)
     return out
 
 
