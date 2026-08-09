@@ -32,7 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from polymarket import book, client, execution, fixtures, longshot, wallets   # noqa: E402
+from polymarket import book, client, execution, fixtures, longshot, wallets, weather   # noqa: E402
 
 
 # Stage-by-stage market-pool counts. Logs are not retrievable from a finished
@@ -195,6 +195,125 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
         f"{trades.groupby('wallet')['market_id'].nunique().median():.0f}")
     meta["mode"] = "live"
     return trades, meta
+
+
+def run_weather(args) -> int:
+    """
+    Weather markets against the forecast that was public when they traded.
+
+    The only idea in this project with a named counterparty AND direct evidence
+    somebody already collects on it. Everything here is arranged so the two
+    ways it could fabricate an edge -- a forecast that saw the future, and a
+    forecast that is overconfident rather than skilful -- are checked before
+    any number is believed.
+    """
+    section("WEATHER: markets vs the forecast that was public at the time")
+    log("Counterparty: people pricing temperature bands off a phone app while")
+    log("NOAA and ECMWF publish physics-based forecasts for free. Not a subtle")
+    log("error -- work nobody bothered to do.\n")
+    cfg = client.ClientConfig(cache_dir=args.cache, rate_limit_s=args.rate_limit)
+    api = client.PolymarketClient(cfg)
+
+    markets = client.markets_by_windows(api, days_back=args.days_back,
+                                        window_days=args.window_days)
+    markets = markets[markets["winning_index"].notna()]
+    log(f"{len(markets):,} resolved markets crawled")
+
+    parsed = []
+    for _, r in markets.iterrows():
+        m = weather.parse_temperature_market(r["market_id"], r.get("question"),
+                                             end_date=r.get("resolved_at"))
+        if m is not None:
+            parsed.append(m)
+    log(f"{len(parsed):,} parsed as temperature-band markets")
+    if len(parsed) < 30:
+        raise RuntimeError(
+            f"only {len(parsed)} temperature markets parsed. Either the crawl "
+            f"missed them or the question wording has drifted -- check "
+            f"parse_temperature_market against a few real questions before "
+            f"reading anything into this.")
+    by_city = pd.Series([m.city for m in parsed]).value_counts()
+    log(by_city.to_string())
+
+    keep = parsed[:args.max_weather_markets]
+    log(f"\nfetching trades for {len(keep):,} markets")
+    frames = []
+    for m in keep:
+        raw = api.market_trades(m.market_id, limit=args.max_trades_per_market)
+        if raw:
+            frames.append(pd.DataFrame(raw))
+    if not frames:
+        raise RuntimeError("no trades returned for any weather market")
+    raw_all = pd.concat(frames, ignore_index=True)
+    f = client.resolve_fields(raw_all, client.TRADE_FIELD_CANDIDATES,
+                              ("market_id", "price", "timestamp"), "weather trades")
+    tr = raw_all.rename(columns={f["market_id"]: "market_id", f["price"]: "price",
+                                 f["timestamp"]: "timestamp",
+                                 f.get("size", "size"): "size"})
+    tr["price"] = pd.to_numeric(tr["price"], errors="coerce")
+    tr = tr[(tr["price"] > 0) & (tr["price"] < 1)]
+    log(f"{len(tr):,} fills across {tr['market_id'].nunique():,} markets")
+
+    section("BUILDING SIGNALS (archived forecasts, not reanalysis)")
+    sig = weather.build_signals(api, keep, tr, lead_days=args.lead_days)
+    log(f"{len(sig):,} signal rows")
+    if sig.empty:
+        raise RuntimeError("no signals built; the forecast archive returned nothing")
+
+    weather.assert_no_lookahead(sig)
+    log("lookahead guard: PASSED (no forecast postdates its trade)")
+
+    section("IS THE FORECAST ITSELF CALIBRATED?")
+    log("Asked BEFORE any edge is claimed. An overconfident forecast can beat")
+    log("a price on paper without being better.\n")
+    cal = weather.calibration_report(sig)
+    log(cal.to_string(index=False))
+    worst = float(cal["gap"].abs().max()) if len(cal) else 1.0
+
+    section("EDGE VS MARKET, ONLY WHERE THEY DISAGREE")
+    res = {}
+    for thresh in (0.05, 0.10, 0.20):
+        r = weather.edge_vs_market(sig, min_disagreement=thresh,
+                                   half_spread_cents=args.half_spread_cents)
+        res[thresh] = r
+        log(f"  disagreement >= {thresh:.2f}: " +
+            ", ".join(f"{k}={v}" for k, v in r.items()))
+
+    best = res.get(0.10, {})
+    net = best.get("net_edge_cents", 0.0) or 0.0
+    t = best.get("t_stat")
+    if worst > 0.20:
+        verdict = (f"INCONCLUSIVE. The forecast is not calibrated (worst bucket "
+                   f"off by {worst:.2f}), so any edge measured against it is an "
+                   f"artefact of overconfidence, not skill.")
+    elif net > 0 and t and t > 2.0:
+        verdict = (f"PROMISING. A public forecast beats the market price by "
+                   f"{net:.2f}c/share net of cost (t={t}) where the two "
+                   f"disagree by 10 points or more, on {best.get('n', 0):,} "
+                   f"signals. Next: a real ensemble instead of a normal around "
+                   f"the deterministic high.")
+    elif net > 0:
+        verdict = (f"WEAK. Forecast beats price by {net:.2f}c but at t={t}, not "
+                   f"distinguishable from luck at this sample size.")
+    else:
+        verdict = ("NO. The public forecast does not beat the market price "
+                   "after cost. The market is already using it, or the crude "
+                   "normal-around-the-deterministic-high is too blunt to tell.")
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    sig.to_csv(out / "weather_signals.csv", index=False)
+    cal.to_csv(out / "weather_calibration.csv", index=False)
+    (out / "REPORT.md").write_text(
+        f"# Weather vs public forecast\n\n## {verdict}\n\n"
+        f"- markets parsed: {len(parsed):,}\n- signals: {len(sig):,}\n"
+        f"- worst calibration gap: {worst:.3f}\n- lookahead guard: passed\n\n"
+        f"## Calibration\n\n{cal.to_markdown(index=False)}\n\n"
+        f"## Edge by disagreement threshold\n\n"
+        + "\n".join(f"- `>={k:.2f}`: {v}" for k, v in res.items()) + "\n")
+    section("VERDICT")
+    log(verdict)
+    return 0
 
 
 def measure_books(args) -> int:
@@ -1022,6 +1141,11 @@ def main() -> int:
                     help="how far back the date-windowed market crawl reaches")
     ap.add_argument("--window-days", type=int, default=14,
                     help="width of each crawl window before adaptive splitting")
+    ap.add_argument("--weather", action="store_true",
+                    help="test weather markets against archived public forecasts")
+    ap.add_argument("--max-weather-markets", type=int, default=600)
+    ap.add_argument("--lead-days", type=int, default=3,
+                    help="forecast lead time; the forecast must predate the trade")
     ap.add_argument("--books", action="store_true",
                     help="measure live order-book spread and depth by band")
     ap.add_argument("--max-books", type=int, default=400)
@@ -1039,6 +1163,8 @@ def main() -> int:
     args = ap.parse_args()
 
     out = Path(args.out)
+    if args.weather:
+        return run_weather(args)
     if args.books:
         return measure_books(args)
     if args.probe_pagination:
