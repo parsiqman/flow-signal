@@ -1,11 +1,11 @@
-# Polymarket wallet scan — 2026-08-08 22:36 UTC
+# Polymarket wallet scan — 2026-08-09 04:27 UTC
 
-## YES, MEASURABLY. The rule pays 5.21c/share net of a 1.00c spread out of sample (t=4.7), and exceeds what honest prices produce by chance. Break-even half-spread is 6.21c -- check that against a real book before sizing anything.
+## YES, MEASURABLY. The rule pays 5.82c/share net of a 1.00c spread out of sample (t=4.88), and exceeds what honest prices produce by chance. Break-even half-spread is 6.82c -- check that against a real book before sizing anything.
 
 | | |
 |---|---|
 | mode | None |
-| wallets discovered | 115,502 |
+| wallets discovered | 107,047 |
 | wallets scored (>=20 fills, >=10 markets) | 0 |
 | t-stat needed to clear luck | None |
 | best t observed | None |
