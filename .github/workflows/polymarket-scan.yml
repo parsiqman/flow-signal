@@ -46,6 +46,10 @@ on:
         description: "Probe API endpoints for this username and report shapes"
         required: false
         default: ""
+      weather:
+        description: "Test weather markets against archived public forecasts (true/false)"
+        required: false
+        default: "false"
       books:
         description: "Measure live order-book spread and depth by band (true/false)"
         required: false
@@ -113,7 +117,9 @@ jobs:
         continue-on-error: true    # a failed scan must still publish its report
         run: |
           EXTRA=""
-          if [ "${{ github.event.inputs.books }}" = "true" ]; then
+          if [ "${{ github.event.inputs.weather }}" = "true" ]; then
+            EXTRA="--weather"
+          elif [ "${{ github.event.inputs.books }}" = "true" ]; then
             EXTRA="--books"
           elif [ "${{ github.event.inputs.probe_pagination }}" = "true" ]; then
             EXTRA="--probe-pagination"

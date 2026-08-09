@@ -252,3 +252,121 @@ def edge_vs_market(signals: pd.DataFrame, min_disagreement: float = 0.10,
         "verdict": ("forecast beats the market price net of cost" if net > 0
                     else "no edge after cost"),
     }
+
+
+def fetch_archived_forecast(client, lat: float, lon: float,
+                            date: pd.Timestamp, lead_days: int = 3) -> dict | None:
+    """
+    The forecast for `date` AS IT STOOD `lead_days` before it.
+
+    `historical-forecast-api` is the whole reason this strategy is testable.
+    It serves the forecast that was actually published on a past day, rather
+    than a reanalysis -- which is the difference between measuring a forecast
+    and measuring hindsight.
+
+    The issue date is returned alongside the value so `assert_no_lookahead` has
+    something to check rather than something to trust.
+    """
+    d = pd.Timestamp(date).tz_localize(None) if pd.Timestamp(date).tz is not None \
+        else pd.Timestamp(date)
+    issued = (d - pd.Timedelta(days=lead_days)).strftime("%Y-%m-%d")
+    day = d.strftime("%Y-%m-%d")
+    try:
+        payload = client._get(OPEN_METEO_HIST_FORECAST, {
+            "latitude": round(lat, 4), "longitude": round(lon, 4),
+            "start_date": day, "end_date": day,
+            "daily": "temperature_2m_max", "temperature_unit": "fahrenheit",
+            "timezone": "auto", "forecast_days": 1,
+            # Ask for the model run from `issued`, not the latest one.
+            "past_days": 0, "models": "best_match",
+            "start_hour": f"{issued}T00:00", "end_hour": f"{issued}T23:00",
+        })
+    except Exception:                                        # noqa: BLE001
+        return None
+    daily = (payload or {}).get("daily") or {}
+    vals = daily.get("temperature_2m_max") or []
+    if not vals or vals[0] is None:
+        return None
+    return {"forecast_high_f": float(vals[0]),
+            "forecast_issued_at": pd.Timestamp(issued, tz="UTC"),
+            "target_date": pd.Timestamp(day, tz="UTC")}
+
+
+def fetch_observed_high(client, lat: float, lon: float,
+                        date: pd.Timestamp) -> float | None:
+    """What the weather actually did. Used only to score, never to signal."""
+    d = pd.Timestamp(date)
+    day = (d.tz_localize(None) if d.tz is not None else d).strftime("%Y-%m-%d")
+    try:
+        payload = client._get(OPEN_METEO_ARCHIVE, {
+            "latitude": round(lat, 4), "longitude": round(lon, 4),
+            "start_date": day, "end_date": day,
+            "daily": "temperature_2m_max", "temperature_unit": "fahrenheit",
+            "timezone": "auto"})
+    except Exception:                                        # noqa: BLE001
+        return None
+    vals = ((payload or {}).get("daily") or {}).get("temperature_2m_max") or []
+    return float(vals[0]) if vals and vals[0] is not None else None
+
+
+def build_signals(client, parsed: list[TempMarket], trades: pd.DataFrame,
+                  lead_days: int = 3, sigma_f: float = 4.0) -> pd.DataFrame:
+    """
+    One row per (market, trade-day): forecast probability against market price.
+
+    The archived deterministic high is turned into a distribution using
+    `sigma_f`, the typical error of a forecast at this lead time. That is
+    cruder than a true ensemble and is stated as such -- it is a FLOOR on what
+    the method can do, not a ceiling. If a normal around the deterministic
+    forecast already beats the market, a real ensemble beats it by more; if it
+    does not, that is not yet a refutation of the idea.
+
+    Every row carries `forecast_issued_at` and `traded_at` so the lookahead
+    guard has something to verify.
+    """
+    by_id = {m.market_id: m for m in parsed}
+    rows = []
+    for mid, m in by_id.items():
+        fc = fetch_archived_forecast(client, m.lat, m.lon, m.date, lead_days)
+        if fc is None:
+            continue
+        obs = fetch_observed_high(client, m.lat, m.lon, m.date)
+        if obs is None:
+            continue
+        # P(lo <= T < hi) for T ~ Normal(forecast, sigma)
+        z_hi = (m.hi_f - fc["forecast_high_f"]) / sigma_f
+        z_lo = (m.lo_f - fc["forecast_high_f"]) / sigma_f
+        p_fc = float(_norm_cdf(np.array([z_hi]))[0] - _norm_cdf(np.array([z_lo]))[0])
+        p_fc = min(max(p_fc, 0.001), 0.999)
+        outcome = float(m.lo_f <= obs < m.hi_f)
+
+        tr = trades[trades["market_id"].astype(str) == str(mid)]
+        for _, t in tr.iterrows():
+            traded_at = pd.to_datetime(t["timestamp"], unit="s", utc=True,
+                                       errors="coerce")
+            if pd.isna(traded_at):
+                continue
+            rows.append({
+                "market_id": str(mid), "city": m.city, "question": m.raw,
+                "p_forecast": p_fc, "p_market": float(t["price"]),
+                "outcome": outcome, "size": float(t.get("size", 0.0)),
+                "forecast_high_f": fc["forecast_high_f"], "observed_high_f": obs,
+                "forecast_issued_at": fc["forecast_issued_at"],
+                "traded_at": traded_at,
+                "band_lo": m.lo_f, "band_hi": m.hi_f,
+            })
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        # Only trades placed AFTER the forecast was issued can use it.
+        df = df[df["traded_at"] >= df["forecast_issued_at"]].reset_index(drop=True)
+    return df
+
+
+def _norm_cdf(x: np.ndarray) -> np.ndarray:
+    """Standard normal CDF without scipy (not installed in CI)."""
+    return 0.5 * (1.0 + np.vectorize(_erf)(np.asarray(x, float) / np.sqrt(2.0)))
+
+
+def _erf(x: float) -> float:
+    from math import erf
+    return erf(x)
