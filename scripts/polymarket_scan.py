@@ -283,6 +283,27 @@ def probe_weather(args) -> int:
           "end_date": target, "daily": "temperature_2m_max",
           "temperature_unit": "fahrenheit", "timezone": "auto"})
 
+    log("\nF2. previous-runs API -- a SEPARATE HOST, not a parameter")
+    for host in ("https://previous-runs-api.open-meteo.com/v1/forecast",
+                 "https://historical-forecast-api.open-meteo.com/v1/forecast"):
+        for var in ("temperature_2m_max_previous_day3",
+                    "temperature_2m_max_previous_day1"):
+            _try(f"{host.split('//')[1][:22]} {var[-14:]}", host,
+                 {"latitude": lat, "longitude": lon, "start_date": target,
+                  "end_date": target, "daily": var,
+                  "temperature_unit": "fahrenheit", "timezone": "auto"})
+
+    log("\nF3. does the plain archived forecast vary with lead time at all?")
+    log("    (if these are identical, the endpoint has no lead-time control")
+    log("     and the forecast is whatever run it chooses -- unusable for a")
+    log("     backtest without knowing which)")
+    for extra in ({}, {"models": "gfs_seamless"}, {"models": "ecmwf_ifs025"}):
+        _try(f"plain + {extra or 'no models'}",
+             weather.OPEN_METEO_HIST_FORECAST,
+             {"latitude": lat, "longitude": lon, "start_date": target,
+              "end_date": target, "daily": "temperature_2m_max",
+              "temperature_unit": "fahrenheit", "timezone": "auto", **extra})
+
     log("\nF. true ensemble members (would beat a normal approximation)")
     _try("ensemble gfs025 temperature_2m",
          weather.OPEN_METEO_ENSEMBLE,
