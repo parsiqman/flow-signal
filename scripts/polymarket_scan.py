@@ -197,6 +197,109 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     return trades, meta
 
 
+def probe_weather(args) -> int:
+    """
+    Measure Open-Meteo's query shape rather than guessing it a second time.
+
+    The first weather run parsed 600 temperature markets and 35,002 fills
+    correctly, then built ZERO signals because every forecast request came back
+    empty. The cause was mine: I combined `daily=` with `start_hour`/`end_hour`
+    and assumed those hours would select WHICH MODEL RUN to read. They do not.
+    Open-Meteo exposes past model runs through dedicated variables
+    (`temperature_2m_max_previous_dayN`), not through a date filter.
+
+    That is the fourth guessed-API-parameter of this project, after Gamma's
+    condition_ids, Gamma's offset, and the book sort key. Each cost a run. The
+    probe pattern exists precisely for this, so: try the candidate forms
+    against one known city and date, print status and shape for each, and let
+    the answer be measured.
+    """
+    section("OPEN-METEO PROBE")
+    cfg = client.ClientConfig(cache_dir=None, rate_limit_s=0.4)
+    api = client.PolymarketClient(cfg)
+    lat, lon = weather.CITIES["nyc"]
+    import datetime as _dt
+    target = (datetime.now(timezone.utc) - _dt.timedelta(days=30)).strftime("%Y-%m-%d")
+    log(f"city NYC ({lat},{lon}), target date {target}\n")
+
+    def _try(label, url, params):
+        try:
+            r = api._get(url, params)
+        except Exception as e:                               # noqa: BLE001
+            log(f"  {label:44} ERROR {type(e).__name__}: {str(e)[:80]}")
+            return None
+        if not isinstance(r, dict):
+            log(f"  {label:44} non-dict response: {str(r)[:70]}")
+            return None
+        if "error" in r or "reason" in r:
+            log(f"  {label:44} API error: {str(r.get('reason'))[:80]}")
+            return None
+        daily = r.get("daily") or {}
+        keys = [k for k in daily if k != "time"]
+        vals = {k: (daily[k][:2] if isinstance(daily[k], list) else daily[k])
+                for k in keys[:4]}
+        log(f"  {label:44} OK keys={keys[:4]} vals={vals}")
+        return r
+
+    log("A. historical-forecast-api, plain (no hour filter, no models)")
+    _try("daily=temperature_2m_max",
+         weather.OPEN_METEO_HIST_FORECAST,
+         {"latitude": lat, "longitude": lon, "start_date": target,
+          "end_date": target, "daily": "temperature_2m_max",
+          "temperature_unit": "fahrenheit", "timezone": "auto"})
+
+    log("\nB. the form the failed run used (expected to be empty/error)")
+    issued = (pd.Timestamp(target) - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
+    _try("with start_hour/end_hour/models/forecast_days",
+         weather.OPEN_METEO_HIST_FORECAST,
+         {"latitude": lat, "longitude": lon, "start_date": target,
+          "end_date": target, "daily": "temperature_2m_max",
+          "temperature_unit": "fahrenheit", "timezone": "auto",
+          "forecast_days": 1, "past_days": 0, "models": "best_match",
+          "start_hour": f"{issued}T00:00", "end_hour": f"{issued}T23:00"})
+
+    log("\nC. previous model runs -- the documented lead-time mechanism")
+    for n in (1, 3, 5):
+        _try(f"daily=temperature_2m_max_previous_day{n}",
+             weather.OPEN_METEO_HIST_FORECAST,
+             {"latitude": lat, "longitude": lon, "start_date": target,
+              "end_date": target,
+              "daily": f"temperature_2m_max_previous_day{n}",
+              "temperature_unit": "fahrenheit", "timezone": "auto"})
+
+    log("\nD. same variables on the live forecast endpoint")
+    for n in (1, 3):
+        _try(f"forecast/ previous_day{n}",
+             "https://api.open-meteo.com/v1/forecast",
+             {"latitude": lat, "longitude": lon, "past_days": 35,
+              "forecast_days": 1,
+              "daily": f"temperature_2m_max_previous_day{n}",
+              "temperature_unit": "fahrenheit", "timezone": "auto"})
+
+    log("\nE. observations (needed to score, must work regardless)")
+    _try("archive daily=temperature_2m_max",
+         weather.OPEN_METEO_ARCHIVE,
+         {"latitude": lat, "longitude": lon, "start_date": target,
+          "end_date": target, "daily": "temperature_2m_max",
+          "temperature_unit": "fahrenheit", "timezone": "auto"})
+
+    log("\nF. true ensemble members (would beat a normal approximation)")
+    _try("ensemble gfs025 temperature_2m",
+         weather.OPEN_METEO_ENSEMBLE,
+         {"latitude": lat, "longitude": lon, "models": "gfs025",
+          "daily": "temperature_2m_max", "temperature_unit": "fahrenheit",
+          "timezone": "auto", "forecast_days": 3})
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "REPORT.md").write_text(
+        "# Open-Meteo probe\n\nSee the job log for the full table of which "
+        "query forms returned data. Written after the first weather run built "
+        "0 signals from 600 correctly-parsed markets because the forecast "
+        "parameters were guessed rather than measured.\n")
+    return 0
+
+
 def run_weather(args) -> int:
     """
     Weather markets against the forecast that was public when they traded.
@@ -1141,6 +1244,8 @@ def main() -> int:
                     help="how far back the date-windowed market crawl reaches")
     ap.add_argument("--window-days", type=int, default=14,
                     help="width of each crawl window before adaptive splitting")
+    ap.add_argument("--probe-weather", action="store_true",
+                    help="measure which Open-Meteo query forms actually return data")
     ap.add_argument("--weather", action="store_true",
                     help="test weather markets against archived public forecasts")
     ap.add_argument("--max-weather-markets", type=int, default=600)
@@ -1163,15 +1268,23 @@ def main() -> int:
     args = ap.parse_args()
 
     out = Path(args.out)
-    if args.weather:
-        return run_weather(args)
-    if args.books:
-        return measure_books(args)
-    if args.probe_pagination:
-        return probe_pagination(args)
-    if args.probe:
-        return probe_endpoints(args)
     try:
+        # These modes used to return BEFORE the handler below, so when the
+        # weather run crashed it wrote no report at all and the stale one from
+        # a previous run stayed in place -- which read as "ambiguous" rather
+        # than "broken". The handler exists so an unattended failure is
+        # legible; every mode has to be inside it.
+        if args.probe_weather:
+            return probe_weather(args)
+        if args.weather:
+            return run_weather(args)
+        if args.books:
+            return measure_books(args)
+        if args.probe_pagination:
+            return probe_pagination(args)
+        if args.probe:
+            return probe_endpoints(args)
+
         trades, meta = collect(args)
         if args.longshot:
             report = analyse_longshot(trades, meta, args)
