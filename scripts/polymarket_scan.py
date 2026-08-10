@@ -260,8 +260,19 @@ def collect_weather_forward(args) -> int:
                f"wording has drifted from what parse_temperature_market "
                f"accepts -- the sample above is the thing to check.")
         log(msg)
+        # Write the sample INTO the report, not just the log. CI logs are
+        # awkward to page through after the fact and the diagnostic kept
+        # falling outside the window; a committed file is retrievable forever
+        # with git show.
+        sample = "\n".join(f"- {str(m.get('question'))[:120]}" for m in mkts[:40])
         (rep / "REPORT.md").write_text(
-            f"# Weather forward collection\n\n## Nothing snapshotted\n\n{msg}\n")
+            f"# Weather forward collection\n\n## Nothing snapshotted\n\n{msg}\n\n"
+            f"## What is actually open right now\n\n"
+            f"The parser wants a city from `weather.CITIES`, the word "
+            f"temperature/temp/degrees, and a band it can read. If these "
+            f"questions carry the band as a separate OUTCOME rather than in "
+            f"the question text, the parser needs to read outcomes too.\n\n"
+            f"{sample}\n")
         (out_dir / ".gitkeep").write_text("")
         return 0
 
@@ -323,8 +334,19 @@ def collect_weather_forward(args) -> int:
                f"0-14 day forecast horizon, or the ensemble returned too few "
                f"members. Nothing appended.")
         log(msg)
+        # Write the sample INTO the report, not just the log. CI logs are
+        # awkward to page through after the fact and the diagnostic kept
+        # falling outside the window; a committed file is retrievable forever
+        # with git show.
+        sample = "\n".join(f"- {str(m.get('question'))[:120]}" for m in mkts[:40])
         (rep / "REPORT.md").write_text(
-            f"# Weather forward collection\n\n## Nothing snapshotted\n\n{msg}\n")
+            f"# Weather forward collection\n\n## Nothing snapshotted\n\n{msg}\n\n"
+            f"## What is actually open right now\n\n"
+            f"The parser wants a city from `weather.CITIES`, the word "
+            f"temperature/temp/degrees, and a band it can read. If these "
+            f"questions carry the band as a separate OUTCOME rather than in "
+            f"the question text, the parser needs to read outcomes too.\n\n"
+            f"{sample}\n")
         (out_dir / ".gitkeep").write_text("")
         return 0
     df = pd.DataFrame(rows)
