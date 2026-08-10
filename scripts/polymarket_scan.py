@@ -197,6 +197,137 @@ def collect(args) -> tuple[pd.DataFrame, dict]:
     return trades, meta
 
 
+def collect_weather_forward(args) -> int:
+    """
+    Snapshot ensemble forecast and market price TOGETHER, for later scoring.
+
+    The probe closed the retrospective route. Measured on 2026-07-11 for NYC:
+
+        historical-forecast, plain        OK   80.5F   (actual 82.3F)
+        ...with models=ecmwf_ifs025       OK   81.8F
+        temperature_2m_max_previous_dayN  400  on every host and endpoint tried
+        previous-runs-api.open-meteo.com  400
+
+    So an archived forecast IS available and IS a real forecast rather than a
+    reanalysis, and the `models` parameter genuinely changes the answer. What
+    is NOT available is control over LEAD TIME, and lead time is the entire
+    question: a forecast issued the morning of the target day is close to the
+    answer, while one issued three days out is a prediction and matches when
+    the markets actually trade. A backtest that cannot state its own lead time
+    cannot be trusted, and this project has already shipped four confident
+    numbers that turned out to be measuring something else.
+
+    So: collect forward instead. Every run snapshots, for each OPEN temperature
+    market, the ensemble distribution and the market price AT THE SAME MOMENT,
+    and writes an append-only row. Lookahead is impossible by construction --
+    the forecast physically did not have access to an outcome that had not
+    happened. The cost is calendar time rather than compute, which is a real
+    cost, and it is the version of this test that cannot be argued with.
+    """
+    section("WEATHER FORWARD COLLECTION")
+    log("Snapshotting forecast and price together. Lookahead is impossible")
+    log("here -- the outcome does not exist yet. The retrospective route is")
+    log("closed because Open-Meteo exposes no lead-time control; see the")
+    log("docstring for the measurements that established that.\n")
+    cfg = client.ClientConfig(cache_dir=None, rate_limit_s=args.rate_limit)
+    api = client.PolymarketClient(cfg)
+
+    mkts = book.open_markets(api, limit=args.max_weather_markets, min_volume=0.0)
+    log(f"{len(mkts):,} open markets fetched")
+    parsed = []
+    for m in mkts:
+        end = m.get("endDate") or m.get("end_date")
+        tm = weather.parse_temperature_market(
+            m.get("conditionId") or m.get("id"), m.get("question"), end_date=end)
+        if tm is not None:
+            parsed.append((tm, m))
+    log(f"{len(parsed):,} are temperature-band markets")
+    if not parsed:
+        log("no open temperature markets right now; nothing to snapshot")
+        return 0
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for tm, raw in parsed:
+        lead = (tm.date - now).days
+        if lead < 0 or lead > 14:
+            continue
+        try:
+            payload = api._get(weather.OPEN_METEO_ENSEMBLE, {
+                "latitude": round(tm.lat, 4), "longitude": round(tm.lon, 4),
+                "models": "gfs025", "daily": "temperature_2m_max",
+                "temperature_unit": "fahrenheit", "timezone": "auto",
+                "forecast_days": min(max(lead + 1, 1), 16)})
+        except Exception as e:                               # noqa: BLE001
+            log(f"  ensemble failed for {tm.city}: {type(e).__name__}")
+            continue
+        daily = (payload or {}).get("daily") or {}
+        times = daily.get("time") or []
+        target = tm.date.strftime("%Y-%m-%d")
+        if target not in times:
+            continue
+        idx = times.index(target)
+        members = [v[idx] for k, v in daily.items()
+                   if k.startswith("temperature_2m_max_member")
+                   and isinstance(v, list) and len(v) > idx and v[idx] is not None]
+        if len(members) < 5:
+            continue
+        p_fc = weather.ensemble_band_probability(np.array(members, float),
+                                                 tm.lo_f, tm.hi_f)
+        prices = raw.get("outcomePrices")
+        if isinstance(prices, str):
+            try:
+                prices = json.loads(prices)
+            except json.JSONDecodeError:
+                prices = None
+        p_mkt = None
+        if isinstance(prices, (list, tuple)) and prices:
+            try:
+                p_mkt = float(prices[0])
+            except (TypeError, ValueError):
+                p_mkt = None
+        rows.append({
+            "snapshot_at": now.isoformat(), "market_id": tm.market_id,
+            "city": tm.city, "target_date": target, "lead_days": lead,
+            "band_lo": tm.lo_f, "band_hi": tm.hi_f,
+            "n_members": len(members),
+            "ensemble_mean_f": round(float(np.mean(members)), 2),
+            "ensemble_sd_f": round(float(np.std(members)), 2),
+            "p_forecast": round(p_fc, 4), "p_market": p_mkt,
+            "disagreement": (round(p_fc - p_mkt, 4) if p_mkt is not None else None),
+            "question": tm.raw,
+        })
+
+    log(f"\n{len(rows):,} snapshots taken")
+    if not rows:
+        log("nothing snapshotted this run (no markets inside the forecast horizon)")
+        return 0
+    df = pd.DataFrame(rows)
+    log(df[["city", "target_date", "lead_days", "p_forecast", "p_market",
+            "disagreement"]].head(15).to_string(index=False))
+
+    out = Path("results/weather_forward")
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "snapshots.csv"
+    # Append-only. Rewriting history here would destroy the one property that
+    # makes this dataset trustworthy.
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+    total = sum(1 for _ in path.open()) - 1
+    log(f"\nappended to {path} ({total:,} rows total)")
+    (Path(args.out) / "REPORT.md").parent.mkdir(parents=True, exist_ok=True)
+    (Path(args.out) / "REPORT.md").write_text(
+        f"# Weather forward collection\n\n"
+        f"Snapshotted {len(rows):,} open temperature markets with their "
+        f"ensemble forecast and market price taken at the same moment.\n\n"
+        f"**{total:,} rows collected so far.** Scoring waits for resolution; "
+        f"lookahead is impossible by construction because the outcomes did not "
+        f"exist when these were written.\n\n"
+        f"The retrospective backtest is closed: Open-Meteo serves archived "
+        f"forecasts but exposes no control over lead time, and lead time is the "
+        f"difference between a prediction and the answer.\n")
+    return 0
+
+
 def probe_weather(args) -> int:
     """
     Measure Open-Meteo's query shape rather than guessing it a second time.
@@ -1265,6 +1396,9 @@ def main() -> int:
                     help="how far back the date-windowed market crawl reaches")
     ap.add_argument("--window-days", type=int, default=14,
                     help="width of each crawl window before adaptive splitting")
+    ap.add_argument("--weather-collect", action="store_true",
+                    help="snapshot ensemble forecast + market price for open "
+                         "temperature markets; the forward test")
     ap.add_argument("--probe-weather", action="store_true",
                     help="measure which Open-Meteo query forms actually return data")
     ap.add_argument("--weather", action="store_true",
@@ -1295,6 +1429,8 @@ def main() -> int:
         # a previous run stayed in place -- which read as "ambiguous" rather
         # than "broken". The handler exists so an unattended failure is
         # legible; every mode has to be inside it.
+        if args.weather_collect:
+            return collect_weather_forward(args)
         if args.probe_weather:
             return probe_weather(args)
         if args.weather:

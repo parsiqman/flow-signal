@@ -1,0 +1,56 @@
+name: Weather forward collection
+
+# Snapshots the ensemble forecast and the market price TOGETHER, twice a day,
+# for every open Polymarket temperature market.
+#
+# This exists because the retrospective backtest is closed: Open-Meteo serves
+# archived forecasts but exposes no control over lead time, and lead time is
+# the difference between a prediction and the answer. Collecting forward makes
+# lookahead impossible by construction -- the outcome does not exist when the
+# row is written -- at the cost of calendar time rather than compute.
+#
+# Do not rewrite results/weather_forward/snapshots.csv. Append only. Rewriting
+# it destroys the single property that makes the dataset worth having.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 11:00 and 23:00 UTC: two lead times per target day, cheaply.
+    - cron: "0 11,23 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -q pandas numpy tabulate
+
+      - name: Snapshot forecasts and prices
+        run: |
+          python scripts/polymarket_scan.py --weather-collect \
+            --max-weather-markets 400 \
+            --out results/weather_forward
+
+      - name: Commit the snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A results/weather_forward
+          if git diff --staged --quiet; then
+            echo "nothing new to append"
+          else
+            git commit -m "Weather snapshot ($(date -u +%Y-%m-%dT%H:%MZ))"
+            for i in 1 2 3; do
+              git pull --rebase --autostash origin main && \
+              git push origin HEAD:main && break
+              sleep $((i * 5))
+            done
+          fi

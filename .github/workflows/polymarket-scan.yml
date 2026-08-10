@@ -46,6 +46,10 @@ on:
         description: "Probe API endpoints for this username and report shapes"
         required: false
         default: ""
+      weather_collect:
+        description: "Snapshot forecast+price for open weather markets (true/false)"
+        required: false
+        default: "false"
       probe_weather:
         description: "Measure which Open-Meteo query forms return data (true/false)"
         required: false
@@ -121,7 +125,9 @@ jobs:
         continue-on-error: true    # a failed scan must still publish its report
         run: |
           EXTRA=""
-          if [ "${{ github.event.inputs.probe_weather }}" = "true" ]; then
+          if [ "${{ github.event.inputs.weather_collect }}" = "true" ]; then
+            EXTRA="--weather-collect"
+          elif [ "${{ github.event.inputs.probe_weather }}" = "true" ]; then
             EXTRA="--probe-weather"
           elif [ "${{ github.event.inputs.weather }}" = "true" ]; then
             EXTRA="--weather"
