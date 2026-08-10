@@ -38,6 +38,31 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+# --- OPEN PROBLEM: finding the weather markets at all ------------------------
+#
+# Three collection runs have now failed to see a single open temperature
+# market, and the cause is NOT the parser. Every run sampled the same 477-486
+# markets, all of them Minnesota primary candidates.
+#
+# Date-windowed enumeration cannot fix this, and adding window splitting (which
+# fixed the identical symptom for the historical crawl) did not help. The
+# reason is structural: Gamma caps a response at 100 rows, and every Minnesota
+# primary market shares ONE end date. Narrowing the date window cannot separate
+# markets that resolve on the same day, so that day's window returns the same
+# first 100 rows however finely it is cut. Any event with 100+ contracts on a
+# single date is an opaque wall in front of everything else resolving that day.
+#
+# So enumeration is the wrong tool. The next step is to SEARCH rather than
+# enumerate -- ask Gamma for markets matching "temperature" directly -- and,
+# given this project's record, to PROBE for that parameter rather than guess
+# it. `--probe-weather` is the place to add the candidates.
+#
+# What is NOT in doubt: 600 historical temperature markets with 35,002 fills
+# were parsed successfully from the closed-market crawl, so these markets exist
+# in quantity and the parser reads them. Only the live-market lookup is broken.
+#
+# -----------------------------------------------------------------------------
+
 OPEN_METEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_HIST_FORECAST = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 OPEN_METEO_ENSEMBLE = "https://ensemble-api.open-meteo.com/v1/ensemble"
