@@ -38,28 +38,43 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-# --- OPEN PROBLEM: finding the weather markets at all ------------------------
+# --- SOLVED: how to find the weather markets --------------------------------
 #
-# Three collection runs have now failed to see a single open temperature
-# market, and the cause is NOT the parser. Every run sampled the same 477-486
-# markets, all of them Minnesota primary candidates.
+# Measured, after three runs that saw nothing but Minnesota primaries:
 #
-# Date-windowed enumeration cannot fix this, and adding window splitting (which
-# fixed the identical symptom for the historical crawl) did not help. The
-# reason is structural: Gamma caps a response at 100 rows, and every Minnesota
-# primary market shares ONE end date. Narrowing the date window cannot separate
-# markets that resolve on the same day, so that day's window returns the same
-# first 100 rows however finely it is cut. Any event with 100+ contracts on a
-# single date is an opaque wall in front of everything else resolving that day.
+#   gamma /markets?query=temperature        100 rows,   0 temperature
+#   gamma /markets?search=temperature       100 rows,   0 temperature
+#   gamma /events?query=temperature         100 rows,   0 temperature
+#   gamma /markets order=volume desc        100 rows,   0 temperature
+#   gamma /public-search?q=temperature       50 rows,  50 temperature   <-- THIS
 #
-# So enumeration is the wrong tool. The next step is to SEARCH rather than
-# enumerate -- ask Gamma for markets matching "temperature" directly -- and,
-# given this project's record, to PROBE for that parameter rather than guess
-# it. `--probe-weather` is the place to add the candidates.
+# Gamma's /markets filters silently ignore query/search and return the default
+# listing -- the same behaviour that wasted three runs on condition_ids. Only
+# /public-search actually searches, and it nests results under an "events" key
+# rather than returning a bare list.
 #
-# What is NOT in doubt: 600 historical temperature markets with 35,002 fills
-# were parsed successfully from the closed-market crawl, so these markets exist
-# in quantity and the parser reads them. Only the live-market lookup is broken.
+# The questions it returns:
+#
+#   Highest temperature in Hong Kong on August 10?
+#   Highest temperature in London on August 10?
+#   Highest temperature in Seoul (Incheon) on August 10?
+#   Highest temperature in Paris on April 16?
+#
+# Two consequences for the parser, both confirmed by that sample:
+#
+#   1. The BAND IS NOT IN THE QUESTION. It lives in the outcomes -- these are
+#      multi-outcome markets with one leg per temperature range. parse_
+#      temperature_market reads only the question and therefore cannot ever
+#      match one, which is why "0 of 486 parsed" said nothing about wording.
+#   2. The cities are global and mostly missing from CITIES: Seoul, Hong Kong,
+#      Incheon. CITIES needs to grow, and "Seoul (Incheon)" shows the city
+#      string is not always clean.
+#
+# So the remaining work is narrow and specified: find markets via
+# /public-search?q=highest temperature, read the band from each outcome rather
+# than the question, and widen CITIES. Nothing about the thesis is in question
+# -- 600 historical temperature markets with 35,002 fills already parsed fine
+# from the closed-market crawl, where the questions carry bands directly.
 #
 # -----------------------------------------------------------------------------
 
