@@ -150,6 +150,64 @@ def test_calibration_is_reported_before_any_edge_is_believed():
     assert rep["gap"].abs().max() < 0.20, rep
 
 
+# --- the live shape: band in the OUTCOME, not the question -----------------
+
+def test_the_band_is_read_from_outcomes_on_live_markets():
+    """
+    The live questions are "Highest temperature in Hong Kong on August 10?"
+    with legs like "84-85F". A parser reading only the question can never
+    match one, which is why three collection runs reported "0 parsed" and it
+    said nothing at all about wording.
+    """
+    m = {"conditionId": "0xabc", "endDate": "2026-08-10T00:00:00Z",
+         "question": "Highest temperature in Hong Kong on August 10?",
+         "outcomes": '["83F or below", "84-85F", "86-87F", "88F or above"]'}
+    got = W.parse_multi_outcome_market(m)
+    assert [(t.lo_f, t.hi_f) for t in got] == [
+        (-np.inf, 83.0), (84.0, 86.0), (86.0, 88.0), (88.0, np.inf)]
+    assert all(t.city == "hong kong" for t in got)
+    assert len({t.market_id for t in got}) == 4      # one per leg, distinct
+
+
+def test_the_bands_partition_without_gaps_or_overlap():
+    """A gap would silently drop trades; an overlap would double-count them."""
+    m = {"conditionId": "0x1", "endDate": "2026-08-10T00:00:00Z",
+         "question": "Highest temperature in Seoul on August 10?",
+         "outcomes": '["70-74", "75-79", "80-84"]'}
+    got = W.parse_multi_outcome_market(m)
+    for a, b in zip(got, got[1:]):
+        assert a.hi_f == b.lo_f, (a.hi_f, b.lo_f)
+
+
+def test_non_band_legs_are_skipped_not_guessed():
+    m = {"conditionId": "0x2", "endDate": "2026-08-10T00:00:00Z",
+         "question": "Will the temperature in Denver be a record?",
+         "outcomes": '["Yes", "No"]'}
+    assert W.parse_multi_outcome_market(m) == []
+
+
+def test_global_cities_from_the_live_search_are_known():
+    """Seoul, Hong Kong and Incheon appear live and were all missing before."""
+    for c in ("seoul", "hong kong", "incheon", "singapore", "sydney"):
+        assert c in W.CITIES, c
+
+
+def test_a_question_carrying_its_own_band_still_works():
+    """The closed-market crawl uses that shape; both must parse."""
+    m = {"conditionId": "0x3", "endDate": "2026-01-05T00:00:00Z",
+         "question": "Highest temperature in NYC on Jan 5: 40-44 degrees?",
+         "outcomes": '["Yes", "No"]'}
+    got = W.parse_multi_outcome_market(m)
+    assert len(got) == 1 and (got[0].lo_f, got[0].hi_f) == (40.0, 45.0)
+
+
+def test_search_uses_public_search_because_the_filters_do_not_filter():
+    import inspect
+    src = inspect.getsource(W.search_temperature_markets)
+    assert "public-search" in src
+    assert "events" in src        # results nest, they do not arrive as a list
+
+
 if __name__ == "__main__":
     fns = [f for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

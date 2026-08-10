@@ -32,6 +32,7 @@ market price is an artefact, not an edge.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -96,6 +97,21 @@ CITIES = {
     "phoenix": (33.4484, -112.0740), "dallas": (32.7767, -96.7970),
     "london": (51.5074, -0.1278), "paris": (48.8566, 2.3522),
     "moscow": (55.7558, 37.6173), "tokyo": (35.6762, 139.6503),
+    # The live search returns global cities the US-only list never had:
+    # "Highest temperature in Hong Kong on August 10?", "Seoul (Incheon)".
+    "seoul": (37.5665, 126.9780), "incheon": (37.4563, 126.7052),
+    "hong kong": (22.3193, 114.1694), "singapore": (1.3521, 103.8198),
+    "sydney": (-33.8688, 151.2093), "melbourne": (-37.8136, 144.9631),
+    "toronto": (43.6532, -79.3832), "vancouver": (49.2827, -123.1207),
+    "berlin": (52.5200, 13.4050), "madrid": (40.4168, -3.7038),
+    "rome": (41.9028, 12.4964), "amsterdam": (52.3676, 4.9041),
+    "dublin": (53.3498, -6.2603), "lisbon": (38.7223, -9.1393),
+    "beijing": (39.9042, 116.4074), "shanghai": (31.2304, 121.4737),
+    "mumbai": (19.0760, 72.8777), "delhi": (28.6139, 77.2090),
+    "dubai": (25.2048, 55.2708), "istanbul": (41.0082, 28.9784),
+    "sao paulo": (-23.5505, -46.6333), "mexico city": (19.4326, -99.1332),
+    "buenos aires": (-34.6037, -58.3816), "cairo": (30.0444, 31.2357),
+    "johannesburg": (-26.2041, 28.0473), "lagos": (6.5244, 3.3792),
 }
 
 
@@ -110,6 +126,41 @@ class TempMarket:
     lo_f: float          # band lower bound, inclusive, Fahrenheit
     hi_f: float          # band upper bound, exclusive
     raw: str
+
+
+def parse_band(text: str) -> tuple[float, float] | None:
+    """
+    Read a temperature band out of free text, or refuse.
+
+    Split out of `parse_temperature_market` because the live markets put the
+    band in the OUTCOME, not the question -- "Highest temperature in Hong Kong
+    on August 10?" with legs like "84-85F", "86F or above". The closed-market
+    crawl carried bands in the question, which is why the question-only parser
+    worked on 600 historical markets and matched zero live ones.
+
+    Refuses anything ambiguous rather than guessing: a mis-read band scores the
+    wrong outcome silently, which is the failure mode this project has hit in
+    four other guises.
+    """
+    if not text:
+        return None
+    q = str(text).lower().replace("\u00b0", " ")
+    m = re.search(r"(-?\d{1,3})\s*(?:-|to|\u2013)\s*(-?\d{1,3})", q)
+    if m:
+        return float(m.group(1)), float(m.group(2)) + 1.0
+    m = re.search(r"(?:above|over|greater than|higher than|at least|\bor more\b|"
+                  r"\bor above\b|\bor higher\b)", q)
+    if m:
+        n = re.search(r"(-?\d{1,3})", q)
+        if n:
+            return float(n.group(1)), np.inf
+    m = re.search(r"(?:below|under|less than|lower than|\bor less\b|\bor lower\b|"
+                  r"\bor cooler\b)", q)
+    if m:
+        n = re.search(r"(-?\d{1,3})", q)
+        if n:
+            return -np.inf, float(n.group(1))
+    return None
 
 
 def parse_temperature_market(market_id: str, question: str,
@@ -410,3 +461,117 @@ def _norm_cdf(x: np.ndarray) -> np.ndarray:
 def _erf(x: float) -> float:
     from math import erf
     return erf(x)
+
+
+def search_temperature_markets(client, queries=("highest temperature",
+                                                "temperature")) -> list[dict]:
+    """
+    Find live temperature markets via /public-search, the only thing that searches.
+
+    Measured, after three collection runs saw nothing but Minnesota primaries:
+
+        gamma /markets?query=temperature      100 rows,  0 temperature
+        gamma /markets?search=temperature     100 rows,  0 temperature
+        gamma /events?query=temperature       100 rows,  0 temperature
+        gamma /markets order=volume desc      100 rows,  0 temperature
+        gamma /public-search?q=temperature     50 rows, 50 temperature
+
+    Gamma's /markets filters silently IGNORE query and search and hand back the
+    default listing, which is the same behaviour that cost three runs on
+    condition_ids. Enumeration cannot work either: Gamma caps at 100 rows and a
+    primary with 100+ candidates sharing one end date walls off everything
+    resolving that day, however finely the date window is cut.
+
+    Results nest under an "events" key rather than arriving as a bare list, and
+    each event carries its markets. Both shapes are handled because the shape is
+    the thing most likely to drift.
+    """
+    out, seen = [], set()
+    for q in queries:
+        for params in ({"q": q, "limit_per_type": 50},
+                       {"q": q, "events_status": "active", "limit_per_type": 50}):
+            try:
+                payload = client._get(f"{GAMMA}/public-search", params)
+            except Exception:                                # noqa: BLE001
+                continue
+            events = []
+            if isinstance(payload, dict):
+                for k in ("events", "markets", "data", "results"):
+                    if isinstance(payload.get(k), list):
+                        events.extend(payload[k])
+            elif isinstance(payload, list):
+                events = payload
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                # An event may carry its markets, or BE one.
+                inner = ev.get("markets")
+                for m in (inner if isinstance(inner, list) and inner else [ev]):
+                    if not isinstance(m, dict):
+                        continue
+                    key = str(m.get("conditionId") or m.get("id") or "")
+                    if not key or key in seen:
+                        continue
+                    title = str(m.get("question") or m.get("title")
+                                or ev.get("title") or "")
+                    if not any(w in title.lower()
+                               for w in ("temperature", "temp", "degrees")):
+                        continue
+                    seen.add(key)
+                    m.setdefault("question", title)
+                    m.setdefault("endDate", ev.get("endDate") or ev.get("end_date"))
+                    out.append(m)
+    return out
+
+
+def parse_multi_outcome_market(market: dict) -> list[TempMarket]:
+    """
+    One TempMarket per OUTCOME, because that is where the band lives.
+
+    The live questions read "Highest temperature in Hong Kong on August 10?"
+    with legs like "84-85F" or "86F or above". A parser reading only the
+    question can never match one, which is why "0 of 486 parsed" said nothing
+    about wording and would have sent me off rewriting a regex that was fine.
+
+    The closed-market crawl is the other case -- bands in the question -- and
+    `parse_temperature_market` still handles it, so both shapes work.
+    """
+    q = str(market.get("question") or market.get("title") or "")
+    if not q:
+        return []
+    ql = q.lower()
+    if not any(w in ql for w in ("temperature", "temp", "degrees")):
+        return []
+    city = next((c for c in sorted(CITIES, key=len, reverse=True) if c in ql), None)
+    if city is None:
+        return []
+    lat, lon = CITIES[city]
+
+    end = market.get("endDate") or market.get("end_date")
+    date = pd.to_datetime(end, errors="coerce", utc=True)
+    if pd.isna(date):
+        return []
+
+    outcomes = market.get("outcomes")
+    if isinstance(outcomes, str):
+        try:
+            outcomes = json.loads(outcomes)
+        except json.JSONDecodeError:
+            outcomes = None
+    mid = str(market.get("conditionId") or market.get("id") or "")
+    out = []
+    if isinstance(outcomes, (list, tuple)):
+        for i, leg in enumerate(outcomes):
+            band = parse_band(str(leg))
+            if band is None:
+                continue       # "Yes"/"No" legs and anything unreadable
+            out.append(TempMarket(f"{mid}#{i}", city, lat, lon, date,
+                                  band[0], band[1], f"{q} [{leg}]"))
+    if out:
+        return out
+    # No readable band in the outcomes -- try the question. A Yes/No market
+    # whose question carries the band is the closed-crawl shape, and 600 of
+    # those parsed fine, so falling through rather than returning empty is the
+    # difference between handling both shapes and silently dropping one.
+    single = parse_temperature_market(mid, q, end_date=end)
+    return [single] if single else []

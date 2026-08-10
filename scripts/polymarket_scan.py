@@ -240,25 +240,27 @@ def collect_weather_forward(args) -> int:
     rep = Path(args.out)
     rep.mkdir(parents=True, exist_ok=True)
 
-    mkts = book.open_markets(api, limit=args.max_weather_markets, min_volume=0.0)
-    log(f"{len(mkts):,} open markets fetched")
+    # SEARCH, not enumerate. Gamma's /markets filters ignore query and search
+    # outright, and date-windowed enumeration cannot see past an event with
+    # 100+ contracts sharing one end date. /public-search is the only thing
+    # that actually searches -- measured, not assumed.
+    mkts = weather.search_temperature_markets(api)
+    log(f"{len(mkts):,} temperature markets found via /public-search")
     if mkts:
-        log("\nsample of what is actually open (so a parse miss is visible):")
+        log("\nsample of what came back:")
         for m in mkts[:8]:
             log(f"  - {str(m.get('question'))[:88]}")
     parsed = []
     for m in mkts:
-        end = m.get("endDate") or m.get("end_date")
-        tm = weather.parse_temperature_market(
-            m.get("conditionId") or m.get("id"), m.get("question"), end_date=end)
-        if tm is not None:
+        # The band lives in the OUTCOMES on live markets, not the question.
+        for tm in weather.parse_multi_outcome_market(m):
             parsed.append((tm, m))
     log(f"\n{len(parsed):,} are temperature-band markets")
     if not parsed:
-        msg = (f"No open temperature markets parsed out of {len(mkts):,} open "
-               f"markets. Either none are running right now, or the question "
-               f"wording has drifted from what parse_temperature_market "
-               f"accepts -- the sample above is the thing to check.")
+        msg = (f"No temperature bands parsed out of {len(mkts):,} markets "
+               f"returned by /public-search. Either none are running, or the "
+               f"outcome wording has drifted from what parse_band accepts -- "
+               f"the sample below is the thing to check.")
         log(msg)
         # Write the sample INTO the report, not just the log. CI logs are
         # awkward to page through after the fact and the diagnostic kept
