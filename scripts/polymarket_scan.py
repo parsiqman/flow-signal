@@ -416,7 +416,64 @@ def probe_weather(args) -> int:
         log(f"  {label:44} OK keys={keys[:4]} vals={vals}")
         return r
 
-    log("A. historical-forecast-api, plain (no hour filter, no models)")
+    log("0. FINDING THE MARKETS AT ALL -- search, not enumeration")
+    log("   Three collection runs saw the same 486 Minnesota primaries because")
+    log("   Gamma caps at 100 rows and those markets share one end date, so no")
+    log("   date window can reach past them. Searching is the only way through,")
+    log("   and the parameter gets measured rather than guessed.\n")
+
+    def _try_search(label, url, params):
+        try:
+            r = api._get(url, params)
+        except Exception as e:                               # noqa: BLE001
+            log(f"  {label:46} ERROR {type(e).__name__}: {str(e)[:60]}")
+            return
+        rows = r if isinstance(r, list) else None
+        if rows is None and isinstance(r, dict):
+            for k in ("markets", "data", "events", "results"):
+                if isinstance(r.get(k), list):
+                    rows, label = r[k], f"{label} [{k}]"
+                    break
+        if not isinstance(rows, list):
+            log(f"  {label:46} shape={type(r).__name__} keys="
+                f"{list(r)[:6] if isinstance(r, dict) else '-'}")
+            return
+        qs = []
+        for m in rows[:400]:
+            if isinstance(m, dict):
+                q = str(m.get("question") or m.get("title") or "")
+                if q:
+                    qs.append(q)
+        hits = [q for q in qs
+                if any(w in q.lower() for w in ("temperature", "temp", "degrees"))]
+        log(f"  {label:46} {len(rows):>4} rows, {len(hits):>3} temperature")
+        for q in hits[:3]:
+            log(f"        -> {q[:96]}")
+
+    for label, url, params in [
+        ("gamma /markets?query=temperature", f"{client.GAMMA}/markets",
+         {"query": "temperature", "closed": "false", "limit": 100}),
+        ("gamma /markets?search=temperature", f"{client.GAMMA}/markets",
+         {"search": "temperature", "closed": "false", "limit": 100}),
+        ("gamma /markets?slug contains", f"{client.GAMMA}/markets",
+         {"slug": "highest-temperature", "closed": "false", "limit": 100}),
+        ("gamma /markets?tag_id weather", f"{client.GAMMA}/markets",
+         {"tag_id": "weather", "closed": "false", "limit": 100}),
+        ("gamma /public-search q=temperature", f"{client.GAMMA}/public-search",
+         {"q": "temperature", "limit_per_type": 50}),
+        ("gamma /public-search q=highest temperature",
+         f"{client.GAMMA}/public-search",
+         {"q": "highest temperature", "events_status": "active",
+          "limit_per_type": 50}),
+        ("gamma /events?query=temperature", f"{client.GAMMA}/events",
+         {"query": "temperature", "closed": "false", "limit": 100}),
+        ("gamma /markets order=volume desc", f"{client.GAMMA}/markets",
+         {"closed": "false", "order": "volumeNum", "ascending": "false",
+          "limit": 100}),
+    ]:
+        _try_search(label, url, params)
+
+    log("\nA. historical-forecast-api, plain (no hour filter, no models)")
     _try("daily=temperature_2m_max",
          weather.OPEN_METEO_HIST_FORECAST,
          {"latitude": lat, "longitude": lon, "start_date": target,
