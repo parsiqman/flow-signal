@@ -64,25 +64,39 @@ def open_markets(client, limit: int = 500, min_volume: float = 1000.0,
     population, so that selection biases the measured spread DOWNWARD, in the
     direction that makes the strategy look good. Sampling across end-date
     windows removes the ordering entirely.
+
+    A window that returns exactly the 100-row cap is SPLIT and re-asked, the
+    same discipline `client.markets_by_windows` uses for the historical crawl.
+    Without it a single event swamps its window: the first collection run
+    fetched 477 "open markets" that were all Minnesota primary candidates,
+    because one primary with 100+ contenders filled every window it touched
+    and nothing else in that date range was ever seen. Weather markets could
+    not appear no matter how many were running.
     """
     import datetime as dt
 
     now = dt.datetime.now(dt.timezone.utc)
     out, seen = [], set()
-    hi = now
-    end = now + dt.timedelta(days=days_forward)
-    while hi < end and len(out) < limit:
-        lo, hi = hi, hi + dt.timedelta(days=window_days)
+    CAP = 100
+
+    def fetch(lo, hi, depth):
+        if len(out) >= limit:
+            return
         try:
             batch = client._get(f"{GAMMA}/markets",
                                 {"closed": "false", "active": "true",
-                                 "limit": 100,
+                                 "limit": CAP,
                                  "end_date_min": lo.strftime("%Y-%m-%d"),
                                  "end_date_max": hi.strftime("%Y-%m-%d")})
         except Exception:                                    # noqa: BLE001
-            continue
+            return
         if not isinstance(batch, list):
-            continue
+            return
+        if len(batch) >= CAP and depth < 6 and (hi - lo).days > 1:
+            mid = lo + (hi - lo) / 2
+            fetch(lo, mid, depth + 1)
+            fetch(mid, hi, depth + 1)
+            return
         for m in batch:
             if not isinstance(m, dict):
                 continue
@@ -94,6 +108,12 @@ def open_markets(client, limit: int = 500, min_volume: float = 1000.0,
                 continue
             seen.add(key)
             out.append(m)
+
+    hi = now
+    end = now + dt.timedelta(days=days_forward)
+    while hi < end and len(out) < limit:
+        lo, hi = hi, hi + dt.timedelta(days=window_days)
+        fetch(lo, hi, 0)
     return out
 
 
