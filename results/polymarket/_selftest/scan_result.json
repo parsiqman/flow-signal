@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-10 15:52 UTC",
+  "generated_at": "2026-08-10 18:04 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -20,6 +20,7 @@
     "max_trades_per_market": 5000,
     "days_back": 730,
     "window_days": 14,
+    "weather_collect": false,
     "probe_weather": false,
     "weather": false,
     "max_weather_markets": 600,
