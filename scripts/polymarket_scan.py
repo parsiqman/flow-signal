@@ -232,8 +232,20 @@ def collect_weather_forward(args) -> int:
     cfg = client.ClientConfig(cache_dir=None, rate_limit_s=args.rate_limit)
     api = client.PolymarketClient(cfg)
 
+    # Create the output directory FIRST. The first run found nothing, returned
+    # early, and left the commit step to die on a missing pathspec -- so an
+    # empty result looked like a crash. A null run has to be legible.
+    out_dir = Path("results/weather_forward")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rep = Path(args.out)
+    rep.mkdir(parents=True, exist_ok=True)
+
     mkts = book.open_markets(api, limit=args.max_weather_markets, min_volume=0.0)
     log(f"{len(mkts):,} open markets fetched")
+    if mkts:
+        log("\nsample of what is actually open (so a parse miss is visible):")
+        for m in mkts[:8]:
+            log(f"  - {str(m.get('question'))[:88]}")
     parsed = []
     for m in mkts:
         end = m.get("endDate") or m.get("end_date")
@@ -241,9 +253,16 @@ def collect_weather_forward(args) -> int:
             m.get("conditionId") or m.get("id"), m.get("question"), end_date=end)
         if tm is not None:
             parsed.append((tm, m))
-    log(f"{len(parsed):,} are temperature-band markets")
+    log(f"\n{len(parsed):,} are temperature-band markets")
     if not parsed:
-        log("no open temperature markets right now; nothing to snapshot")
+        msg = (f"No open temperature markets parsed out of {len(mkts):,} open "
+               f"markets. Either none are running right now, or the question "
+               f"wording has drifted from what parse_temperature_market "
+               f"accepts -- the sample above is the thing to check.")
+        log(msg)
+        (rep / "REPORT.md").write_text(
+            f"# Weather forward collection\n\n## Nothing snapshotted\n\n{msg}\n")
+        (out_dir / ".gitkeep").write_text("")
         return 0
 
     now = datetime.now(timezone.utc)
@@ -300,22 +319,25 @@ def collect_weather_forward(args) -> int:
 
     log(f"\n{len(rows):,} snapshots taken")
     if not rows:
-        log("nothing snapshotted this run (no markets inside the forecast horizon)")
+        msg = (f"{len(parsed):,} temperature markets parsed but none inside the "
+               f"0-14 day forecast horizon, or the ensemble returned too few "
+               f"members. Nothing appended.")
+        log(msg)
+        (rep / "REPORT.md").write_text(
+            f"# Weather forward collection\n\n## Nothing snapshotted\n\n{msg}\n")
+        (out_dir / ".gitkeep").write_text("")
         return 0
     df = pd.DataFrame(rows)
     log(df[["city", "target_date", "lead_days", "p_forecast", "p_market",
             "disagreement"]].head(15).to_string(index=False))
 
-    out = Path("results/weather_forward")
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / "snapshots.csv"
+    path = out_dir / "snapshots.csv"
     # Append-only. Rewriting history here would destroy the one property that
     # makes this dataset trustworthy.
     df.to_csv(path, mode="a", header=not path.exists(), index=False)
     total = sum(1 for _ in path.open()) - 1
     log(f"\nappended to {path} ({total:,} rows total)")
-    (Path(args.out) / "REPORT.md").parent.mkdir(parents=True, exist_ok=True)
-    (Path(args.out) / "REPORT.md").write_text(
+    (rep / "REPORT.md").write_text(
         f"# Weather forward collection\n\n"
         f"Snapshotted {len(rows):,} open temperature markets with their "
         f"ensemble forecast and market price taken at the same moment.\n\n"
