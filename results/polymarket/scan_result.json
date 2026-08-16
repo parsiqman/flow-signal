@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-09 07:31 UTC",
+  "generated_at": "2026-08-16 06:58 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -20,6 +20,11 @@
     "max_trades_per_market": 5000,
     "days_back": 730,
     "window_days": 14,
+    "weather_collect": false,
+    "probe_weather": false,
+    "weather": false,
+    "max_weather_markets": 600,
+    "lead_days": 3,
     "books": false,
     "max_books": 400,
     "probe_pagination": false,
@@ -32,28 +37,28 @@
   },
   "meta": {
     "by_category": {
-      "crypto": {
-        "pool": 2223,
-        "sampled": 120,
-        "fetched": 120
-      },
-      "sports": {
-        "pool": 5853,
+      "politics": {
+        "pool": 1307,
         "sampled": 120,
         "fetched": 120
       },
       "other": {
-        "pool": 8315,
+        "pool": 8236,
+        "sampled": 120,
+        "fetched": 120
+      },
+      "crypto": {
+        "pool": 2218,
+        "sampled": 120,
+        "fetched": 120
+      },
+      "sports": {
+        "pool": 5866,
         "sampled": 120,
         "fetched": 120
       },
       "econ": {
-        "pool": 178,
-        "sampled": 120,
-        "fetched": 120
-      },
-      "politics": {
-        "pool": 1300,
+        "pool": 176,
         "sampled": 120,
         "fetched": 120
       },
@@ -68,59 +73,65 @@
         "fetched": 120
       }
     },
-    "n_raw_trades": 1074593,
+    "n_raw_trades": 1081167,
     "n_wallets_discovered": 400,
-    "n_candidates": 142183,
+    "n_candidates": 128983,
     "n_fetched": 400,
     "n_wallets_examined": 400,
     "fetch_failures": 0,
     "mode": "live"
   },
   "market_pool": {
-    "raw_markets_fetched": 39755,
-    "with_winning_outcome": 39555,
+    "raw_markets_fetched": 39818,
+    "with_winning_outcome": 39611,
     "after_volume_filter": null,
-    "resolved_pool": 19024,
+    "resolved_pool": 18958,
     "outcome_price_samples": [
-      "[\"0\", \"1\"]",
-      "[\"0\", \"1\"]",
-      "[\"1\", \"0\"]",
       "[\"1\", \"0\"]",
       "[\"0\", \"1\"]",
-      "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
+      "[\"0\", \"1\"]",
       "[\"0\", \"1\"]",
       "[\"0\", \"1\"]"
     ],
     "category_pool": {
-      "other": 8315,
-      "sports": 5853,
-      "crypto": 2223,
-      "politics": 1300,
+      "other": 8236,
+      "sports": 5866,
+      "crypto": 2218,
+      "politics": 1307,
       "weather": 942,
       "entertainment": 213,
-      "econ": 178
+      "econ": 176
     }
   },
   "verdict": "NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.",
   "fill_coverage": null,
   "n_wallets_scanned": 400,
-  "n_scored": 141,
+  "n_scored": 156,
   "t_needed": 3.7,
-  "best_t": 3.04,
-  "best_edge_cents": 28.27,
+  "best_t": 3.08,
+  "best_edge_cents": 35.22,
   "n_clearing_luck": 0,
   "persistence": {
-    "n_wallets_both_periods": 21,
+    "n_wallets_both_periods": 24,
     "n_selected": 2,
-    "selected_oos_edge": 0.0674,
-    "everyone_else_oos_edge": -0.0056,
-    "gap": 0.073,
-    "gap_t_stat": 1.91,
-    "rank_correlation": 0.1506,
+    "selected_oos_edge": -0.0272,
+    "everyone_else_oos_edge": 0.0079,
+    "gap": -0.0351,
+    "gap_t_stat": -1.51,
+    "rank_correlation": -0.0861,
     "verdict": "NO EVIDENCE that past performance predicts future performance -- copy trading has nothing to copy"
   },
   "within_wallet_split": {},
   "bias": [
+    {
+      "wallet": "0x4a9a87962893e6e119f1cc7f67c61d0287e0f675",
+      "overall_edge": 0.3522,
+      "extreme_band_stake": 0.184,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
     {
       "wallet": "0xa6a856a8c8a7f14fd9be6ae11c367c7cbb755009",
       "overall_edge": 0.2827,
@@ -134,25 +145,30 @@
       "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     },
     {
-      "wallet": "0x27abdfc9393c72a6330a3be987da4b46c726e521",
-      "overall_edge": 0.1641,
-      "extreme_band_stake": 0.033,
+      "wallet": "0x509587cbb541251c74f261df3421f1fcc9fdc97c",
+      "overall_edge": 0.1577,
+      "extreme_band_stake": 0.212,
       "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     },
     {
-      "wallet": "0xa9d71818dadc207f9ea3d3f46ff0b12e497025e9",
-      "overall_edge": 0.1202,
-      "extreme_band_stake": 0.404,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
-    {
-      "wallet": "0xfe911a4e80ee71b47cd1ee690733ac4062e970ff",
-      "overall_edge": 0.1125,
-      "extreme_band_stake": 0.676,
+      "wallet": "0xb48b9192dc52eed724fa58c66fa8926d06a3648e",
+      "overall_edge": 0.1553,
+      "extreme_band_stake": 0.754,
       "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
     }
   ],
   "style": [
+    {
+      "wallet": "0x4a9a87962893e6e119f1cc7f67c61d0287e0f675",
+      "n_markets": 23,
+      "both_sides_frac": 0.217,
+      "median_fills_per_market": 1.0,
+      "median_span_hours": 0.0,
+      "extreme_band_stake": 0.184,
+      "avg_size_per_market": 144285.4,
+      "style": "mixed / unclear",
+      "copyable": "UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion."
+    },
     {
       "wallet": "0xa6a856a8c8a7f14fd9be6ae11c367c7cbb755009",
       "n_markets": 10,
@@ -176,40 +192,29 @@
       "copyable": "UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion."
     },
     {
-      "wallet": "0x27abdfc9393c72a6330a3be987da4b46c726e521",
-      "n_markets": 11,
-      "both_sides_frac": 0.0,
-      "median_fills_per_market": 2.0,
-      "median_span_hours": 0.103,
-      "extreme_band_stake": 0.033,
-      "avg_size_per_market": 358.8,
-      "style": "position taker",
-      "copyable": "COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution."
-    },
-    {
-      "wallet": "0xa9d71818dadc207f9ea3d3f46ff0b12e497025e9",
-      "n_markets": 70,
-      "both_sides_frac": 0.014,
-      "median_fills_per_market": 5.0,
-      "median_span_hours": 0.846,
-      "extreme_band_stake": 0.404,
-      "avg_size_per_market": 942.5,
+      "wallet": "0x509587cbb541251c74f261df3421f1fcc9fdc97c",
+      "n_markets": 13,
+      "both_sides_frac": 0.308,
+      "median_fills_per_market": 7.0,
+      "median_span_hours": 26.25,
+      "extreme_band_stake": 0.212,
+      "avg_size_per_market": 8950.4,
       "style": "mixed / unclear",
       "copyable": "UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion."
     },
     {
-      "wallet": "0xfe911a4e80ee71b47cd1ee690733ac4062e970ff",
-      "n_markets": 87,
-      "both_sides_frac": 0.172,
-      "median_fills_per_market": 3.0,
-      "median_span_hours": 4.144,
-      "extreme_band_stake": 0.676,
-      "avg_size_per_market": 3916.8,
+      "wallet": "0xb48b9192dc52eed724fa58c66fa8926d06a3648e",
+      "n_markets": 127,
+      "both_sides_frac": 0.055,
+      "median_fills_per_market": 2.0,
+      "median_span_hours": 1.599,
+      "extreme_band_stake": 0.754,
+      "avg_size_per_market": 4291.9,
       "style": "bias harvester",
       "copyable": "RUN THE RULE. Structural, available to anyone posting the same orders, and cheaper without the copy latency."
     }
   ],
   "economics": null,
   "n_category_clearing": 1,
-  "n_concentrated": 1
+  "n_concentrated": 4
 }
