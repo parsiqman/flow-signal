@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Runtime artifacts of the nightshark bot: live PnL ledger and trade tape.
+# Account state does not belong in version control.
+state/
+results/nightshark/*.jsonl
