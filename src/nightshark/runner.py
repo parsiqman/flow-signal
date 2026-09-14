@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import sys
 import time
@@ -95,12 +96,16 @@ def decide(cfg, feed, broker, model, decided_at, window_start, window_end):
     return feats, contract, signal, ""
 
 
-def run_window(cfg, feed, broker, model, risk, decided_at, settle_now=True) -> WindowResult:
+def run_window(cfg, feed, broker, model, risk, decided_at, settle_now=True,
+               precomputed=None) -> WindowResult:
+    """`precomputed` is a decide() result computed elsewhere -- it lets the
+    simulator fan the model calls out across threads and then apply them to the
+    ledger in strict chronological order, which the running equity depends on."""
     window_start, window_end = window_bounds(decided_at, cfg.window_minutes)
     res = WindowResult(decided_at=decided_at, window_end=window_end)
 
-    feats, contract, signal, why = decide(cfg, feed, broker, model, decided_at,
-                                          window_start, window_end)
+    feats, contract, signal, why = precomputed if precomputed is not None else decide(
+        cfg, feed, broker, model, decided_at, window_start, window_end)
     if why:
         res.skipped = why
         return res
@@ -170,7 +175,8 @@ def relax_limits(cfg):
                    max_consecutive_losses=10 ** 9, max_trades_per_day=10 ** 9)
 
 
-def simulate(cfg, n_windows: int, model, risk, measuring: bool = False) -> None:
+def simulate(cfg, n_windows: int, model, risk, measuring: bool = False,
+             workers: int = 1) -> None:
     """Replay N consecutive past windows end-to-end. No waiting, no real money.
 
     This is the measurement tool. Run it before the live loop and after any
@@ -185,11 +191,26 @@ def simulate(cfg, n_windows: int, model, risk, measuring: bool = False) -> None:
     now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     lead = timedelta(minutes=cfg.window_minutes - 4)      # decide 4m before close
 
-    prices = []
+    stamps = []
     for i in range(n_windows, 0, -1):
         start, _ = window_bounds(now - timedelta(minutes=cfg.window_minutes * i),
                                  cfg.window_minutes)
-        res = run_window(cfg, feed, broker, model, risk, start + lead, settle_now=True)
+        stamps.append(start + lead)
+
+    # The model calls are independent, so fan them out; the ledger is not, so
+    # apply the results strictly in order afterwards.
+    plans = [None] * len(stamps)
+    if workers > 1:
+        def _plan(ts):
+            ws, we = window_bounds(ts, cfg.window_minutes)
+            return decide(cfg, feed, broker, model, ts, ws, we)
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            plans = list(ex.map(_plan, stamps))
+
+    prices = []
+    for idx, ts in enumerate(stamps):
+        res = run_window(cfg, feed, broker, model, risk, ts, settle_now=True,
+                         precomputed=plans[idx])
         _emit(res, risk)
         if res.fill:
             prices.append(res.fill["price_cents"])
@@ -265,6 +286,9 @@ def main(argv=None) -> int:
     p.add_argument("--measure", action="store_true",
                    help="with --simulate: lift risk limits so the whole sample is "
                         "observed instead of stopping at the first losing streak")
+    p.add_argument("--workers", type=int, default=1, metavar="N",
+                   help="with --simulate: run N model calls concurrently "
+                        "(the ledger is still applied in order)")
     p.add_argument("--scripted", action="store_true",
                    help="use the offline stand-in model instead of the API")
     p.add_argument("--state", default=None, help="override the risk state file")
@@ -296,7 +320,8 @@ def main(argv=None) -> int:
         timeout_s=cfg.llm_timeout_s)
 
     if args.simulate:
-        simulate(cfg, args.simulate, model, risk, measuring=args.measure); return 0
+        simulate(cfg, args.simulate, model, risk, measuring=args.measure,
+                 workers=max(1, args.workers)); return 0
     if args.live:
         if not cfg.dry_run:
             print("!! LIVE MONEY. Ctrl-C within 10s to abort."); time.sleep(10)

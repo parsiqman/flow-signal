@@ -307,6 +307,32 @@ def test_api_errors_carry_the_servers_message():
 
 
 # -- end to end -------------------------------------------------------------
+def test_parallel_planning_matches_sequential():
+    """Fanning the model calls across threads must not change the ledger: the
+    same windows, the same trades, the same equity, in the same order.
+
+    Note the bare ScriptedModel() -- it decides from the feature text, so it is
+    stateless and deterministic per window. A model that answers from an
+    internal call counter (ScriptedModel([UP, DOWN])) legitimately differs under
+    concurrency, because thread scheduling then picks which window gets which
+    answer. That would test the stub, not the runner.
+    """
+    import contextlib
+    import io
+
+    from nightshark.runner import simulate
+
+    def run(workers):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = _cfg(state_path=str(Path(d) / "s.json"))
+            risk = RiskManager(cfg)
+            with contextlib.redirect_stdout(io.StringIO()):
+                simulate(cfg, 8, ScriptedModel(), risk, workers=workers)
+            return risk.state.equity, risk.state.wins, risk.state.losses
+
+    assert run(1) == run(4), "concurrency changed the outcome"
+
+
 def test_window_bounds_align_to_quarter_hours():
     for minute, expect in ((0, 0), (7, 0), (14, 0), (15, 15), (44, 30), (59, 45)):
         start, end = window_bounds(NOW.replace(minute=minute), 15)
