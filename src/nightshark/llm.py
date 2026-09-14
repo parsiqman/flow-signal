@@ -133,7 +133,18 @@ class ClaudeDirectionModel:
                 messages=[{"role": "user", "content": user}],
             )
         except anthropic.APIStatusError as e:
-            return self._abstain(f"api_status_{e.status_code}", t0)
+            # Carry the server's own message, not just the status code. A bare
+            # "api_status_400" is indistinguishable between a bad schema, an
+            # expired card and a rate limit -- and this bot's response to all
+            # three is a silent abstain, so the log line is the only evidence
+            # anyone will have that it stopped trading and why.
+            detail = ""
+            try:
+                detail = (e.body or {}).get("error", {}).get("message", "")
+            except (AttributeError, TypeError):
+                pass
+            return self._abstain(
+                f"api_status_{e.status_code}: {detail or e}"[:240], t0)
         except anthropic.APIConnectionError as e:
             return self._abstain(f"api_connection: {e}", t0)
         except Exception as e:                      # never let the loop die on one call

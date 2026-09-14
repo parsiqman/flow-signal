@@ -237,6 +237,12 @@ class _Resp:
         self.usage = type("U", (), {"input_tokens": 500, "output_tokens": 40})()
 
 
+class _FakeResponse:
+    status_code = 400
+    headers: dict = {}
+    request = None
+
+
 class _Client:
     """Minimal stand-in for anthropic.Anthropic."""
     def __init__(self, resp=None, raises=None):
@@ -280,6 +286,24 @@ def test_every_failure_mode_abstains_rather_than_guessing():
         assert s.direction == ABSTAIN, f"{name} produced a trade: {s.direction}"
         assert not s.tradeable
         assert s.error, f"{name} abstained without recording why"
+
+
+def test_api_errors_carry_the_servers_message():
+    """A silent abstain is the bot's response to every API failure, so the
+    logged reason is the only evidence of why it stopped trading."""
+    import anthropic
+
+    class _Boom(_Client):
+        def _create(self, **kwargs):
+            raise anthropic.APIStatusError(
+                "400", response=_FakeResponse(), body={
+                    "error": {"type": "invalid_request_error",
+                              "message": "Your credit balance is too low"}})
+
+    s = ClaudeDirectionModel(client=_Boom()).predict("VOL ...")
+    assert s.direction == ABSTAIN
+    assert "credit balance" in s.error, f"message lost: {s.error!r}"
+    assert "400" in s.error
 
 
 # -- end to end -------------------------------------------------------------
