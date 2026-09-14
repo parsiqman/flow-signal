@@ -188,6 +188,20 @@ def test_reset_rebaselines_so_trading_can_actually_resume():
         assert r.state.realized_pnl == -24.0, "the loss stays on the books"
 
 
+def test_daily_counters_follow_simulated_time_not_the_wall_clock():
+    """Replaying hours of windows must not trip the LIVE daily caps, or the
+    measurement stops early and reports a hit rate on a truncated sample."""
+    with tempfile.TemporaryDirectory() as d:
+        cfg = _cfg(max_trades_per_day=3, state_path=str(Path(d) / "s.json"))
+        r = RiskManager(cfg)
+        day1 = datetime(2026, 9, 12, 10, 0, tzinfo=timezone.utc)
+        for i in range(3):
+            r.record_entry(1.0, now=day1 + timedelta(minutes=15 * i))
+        assert not r.allow_trade(1.0, now=day1 + timedelta(hours=1))[0], "cap applies within a day"
+        ok, why = r.allow_trade(1.0, now=day1 + timedelta(days=1))
+        assert ok, f"a new simulated day must reset the cap, got {why}"
+
+
 def test_other_limits_block_before_the_drawdown_does():
     with tempfile.TemporaryDirectory() as d:
         cfg = _cfg(max_drawdown=1e9, daily_loss_limit=10.0,

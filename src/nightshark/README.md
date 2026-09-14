@@ -24,7 +24,10 @@ export PYTHONPATH=src
 # End-to-end on synthetic data, no API key, no network, no money:
 python -m nightshark.runner --simulate 20 --scripted
 
-# Same, but Claude actually makes the calls (needs ANTHROPIC_API_KEY):
+# Measure a strategy over a full sample (risk limits lifted, paper only):
+python -m nightshark.runner --simulate 400 --scripted --measure
+
+# Claude actually makes the calls (needs ANTHROPIC_API_KEY):
 python -m nightshark.runner --simulate 20
 
 # State of the account and the kill switch:
@@ -89,8 +92,12 @@ Two numbers decide whether this works, and neither is the hit rate on its own:
 - Over 15 minutes BTC is close to a random walk. A genuine edge here would be
   small, and the null hypothesis — that there is none — is the one to beat.
 
-Run `--simulate` on real candles (`NIGHTSHARK_FEED=rest`) over a few hundred
-windows before going live. Synthetic-tape results measure the plumbing, not the
+Run `--simulate --measure` on real candles (`NIGHTSHARK_FEED=rest`) over a few
+hundred windows before going live. `--measure` lifts the risk limits for the
+duration of the run: live you want to stop after six losses, but measuring, that
+stop truncates the sample exactly at a losing streak and the hit rate you read
+back is conditioned on having stopped. Without it a 400-window run can report on
+9 trades. Synthetic-tape results measure the plumbing, not the
 strategy: that tape has no reason for direction to be predictable, so anything
 profitable on it is a property of the generator.
 

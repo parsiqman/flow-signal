@@ -80,20 +80,24 @@ class RiskManager:
         os.replace(tmp, self.path)     # atomic: a crash mid-write cannot corrupt state
 
     @staticmethod
-    def _today() -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    def _today(now: datetime | None = None) -> str:
+        return (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
 
-    def _roll_day(self) -> None:
-        today = self._today()
+    def _roll_day(self, now: datetime | None = None) -> None:
+        """Roll the daily counters. `now` is injectable so the simulator ages
+        its day with SIMULATED time -- otherwise replaying a few hundred
+        windows trips the live daily caps partway through and reports a hit
+        rate on a truncated sample."""
+        today = self._today(now)
         if self.state.day != today:
             self.state.day = today
             self.state.day_pnl = 0.0
             self.state.day_trades = 0
 
     # -- the gate -----------------------------------------------------------
-    def allow_trade(self, cost: float) -> tuple[bool, str]:
+    def allow_trade(self, cost: float, now: datetime | None = None) -> tuple[bool, str]:
         """Check every limit. Returns (allowed, reason-if-not)."""
-        self._roll_day()
+        self._roll_day(now)
         s, c = self.state, self.cfg
 
         if s.halted:
@@ -135,14 +139,14 @@ class RiskManager:
         self.save()
 
     # -- bookkeeping --------------------------------------------------------
-    def record_entry(self, cost: float) -> None:
-        self._roll_day()
+    def record_entry(self, cost: float, now: datetime | None = None) -> None:
+        self._roll_day(now)
         self.state.day_trades += 1
         self.save()
 
-    def record_settlement(self, pnl: float) -> None:
+    def record_settlement(self, pnl: float, now: datetime | None = None) -> None:
         """Book a settled trade and re-check the drawdown limit immediately."""
-        self._roll_day()
+        self._roll_day(now)
         s = self.state
         s.realized_pnl += pnl
         s.equity += pnl

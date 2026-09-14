@@ -18,7 +18,7 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from .config import Config
@@ -120,7 +120,7 @@ def run_window(cfg, feed, broker, model, risk, decided_at, settle_now=True) -> W
         return res
 
     est_cost = (cfg.contracts_per_trade * price) / 100.0
-    ok, reason = risk.allow_trade(est_cost)
+    ok, reason = risk.allow_trade(est_cost, now=decided_at)
     if not ok:
         res.skipped = f"risk: {reason}"
         return res
@@ -130,13 +130,13 @@ def run_window(cfg, feed, broker, model, risk, decided_at, settle_now=True) -> W
         res.skipped = f"not filled: {err}"
         return res
     res.fill = fill.to_dict()
-    risk.record_entry(fill.cost)
+    risk.record_entry(fill.cost, now=decided_at)
 
     if settle_now:
         settlement = feed.spot(window_end)
         res.settlement_price = settlement
         res.pnl = fill.settle(settlement)
-        risk.record_settlement(res.pnl)
+        risk.record_settlement(res.pnl, now=window_end)
     return res
 
 
@@ -156,13 +156,30 @@ def _emit(res: WindowResult, risk) -> None:
         print(f"           why: {sig['reason']}")
 
 
-def simulate(cfg, n_windows: int, model, risk) -> None:
+def relax_limits(cfg):
+    """Config with the risk limits lifted, for measurement runs only.
+
+    The kill switch and the measurement want opposite things. Live, you want to
+    stop after six losses. Measuring, that stop truncates the sample at the
+    worst possible moment -- a losing streak -- and the hit rate you read back
+    is conditioned on having stopped, which is worse than no number at all.
+    So `--measure` observes the whole sample. It is never a live mode: the
+    ledger still records every trade, nothing gates it.
+    """
+    return replace(cfg, max_drawdown=1e12, daily_loss_limit=1e12,
+                   max_consecutive_losses=10 ** 9, max_trades_per_day=10 ** 9)
+
+
+def simulate(cfg, n_windows: int, model, risk, measuring: bool = False) -> None:
     """Replay N consecutive past windows end-to-end. No waiting, no real money.
 
     This is the measurement tool. Run it before the live loop and after any
     change to features or prompt -- and read the hit rate against the breakeven
     it prints, not against 50%.
     """
+    if measuring:
+        print("MEASURE MODE: risk limits lifted to observe the full sample. "
+              "Not a live configuration.\n")
     feed = build_feed(cfg)
     broker = build_broker(cfg)
     now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
@@ -226,7 +243,7 @@ def live(cfg, model, risk) -> None:
                         price_cents=r.fill["price_cents"], fee_cents=r.fill["fee_cents"],
                         order_id=r.fill["order_id"], strike=r.fill["strike"])
             r.pnl = fill.settle(r.settlement_price)
-            risk.record_settlement(r.pnl)
+            risk.record_settlement(r.pnl, now=end)
             _emit(r, risk)
         pending = still
 
@@ -245,12 +262,19 @@ def main(argv=None) -> int:
                    help="print the Kalshi markets this key can see (verifies the series ticker)")
     p.add_argument("--reset-halt", action="store_true", help="clear a tripped kill switch")
     p.add_argument("--status", action="store_true", help="print risk state and exit")
+    p.add_argument("--measure", action="store_true",
+                   help="with --simulate: lift risk limits so the whole sample is "
+                        "observed instead of stopping at the first losing streak")
     p.add_argument("--scripted", action="store_true",
                    help="use the offline stand-in model instead of the API")
     p.add_argument("--state", default=None, help="override the risk state file")
     args = p.parse_args(argv)
 
     cfg = Config.from_env()
+    if args.measure:
+        if not args.simulate:
+            p.error("--measure only applies to --simulate")
+        cfg = relax_limits(cfg)
     risk = RiskManager(cfg, state_path=args.state)
 
     if args.status:
@@ -272,7 +296,7 @@ def main(argv=None) -> int:
         timeout_s=cfg.llm_timeout_s)
 
     if args.simulate:
-        simulate(cfg, args.simulate, model, risk); return 0
+        simulate(cfg, args.simulate, model, risk, measuring=args.measure); return 0
     if args.live:
         if not cfg.dry_run:
             print("!! LIVE MONEY. Ctrl-C within 10s to abort."); time.sleep(10)
