@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-18 10:45 UTC",
+  "generated_at": "2026-10-25 11:03 UTC",
   "args": {
     "markets": 200,
     "market_pool": 3000,
@@ -38,32 +38,27 @@
   "meta": {
     "by_category": {
       "sports": {
-        "pool": 4706,
+        "pool": 4645,
         "sampled": 120,
         "fetched": 120
       },
       "crypto": {
-        "pool": 2063,
+        "pool": 2074,
         "sampled": 120,
         "fetched": 120
       },
       "other": {
-        "pool": 5095,
+        "pool": 4905,
         "sampled": 120,
         "fetched": 120
       },
       "weather": {
-        "pool": 993,
+        "pool": 991,
         "sampled": 120,
         "fetched": 120
       },
       "politics": {
-        "pool": 571,
-        "sampled": 120,
-        "fetched": 120
-      },
-      "entertainment": {
-        "pool": 147,
+        "pool": 560,
         "sampled": 120,
         "fetched": 120
       },
@@ -71,61 +66,66 @@
         "pool": 65,
         "sampled": 65,
         "fetched": 65
+      },
+      "entertainment": {
+        "pool": 147,
+        "sampled": 120,
+        "fetched": 120
       }
     },
-    "n_raw_trades": 927715,
+    "n_raw_trades": 964333,
     "n_wallets_discovered": 400,
-    "n_candidates": 108417,
+    "n_candidates": 116801,
     "n_fetched": 400,
     "n_wallets_examined": 400,
     "fetch_failures": 0,
     "mode": "live"
   },
   "market_pool": {
-    "raw_markets_fetched": 30286,
-    "with_winning_outcome": 30188,
+    "raw_markets_fetched": 30365,
+    "with_winning_outcome": 30253,
     "after_volume_filter": null,
-    "resolved_pool": 13640,
+    "resolved_pool": 13387,
     "outcome_price_samples": [
-      "[\"0\", \"1\"]",
+      "[\"1\", \"0\"]",
       "[\"0\", \"1\"]",
       "[\"0\", \"1\"]",
       "[\"1\", \"0\"]",
-      "[\"1\", \"0\"]",
+      "[\"0\", \"1\"]",
       "[\"1\", \"0\"]",
       "[\"1\", \"0\"]",
       "[\"1\", \"0\"]"
     ],
     "category_pool": {
-      "other": 5095,
-      "sports": 4706,
-      "crypto": 2063,
-      "weather": 993,
-      "politics": 571,
+      "other": 4905,
+      "sports": 4645,
+      "crypto": 2074,
+      "weather": 991,
+      "politics": 560,
       "entertainment": 147,
       "econ": 65
     }
   },
-  "verdict": "NO. Nothing clears the luck bar, and no out-of-sample test could be run on this sample.",
+  "verdict": "NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.",
   "fill_coverage": null,
   "n_wallets_scanned": 400,
-  "n_scored": 129,
+  "n_scored": 122,
   "t_needed": 3.7,
   "best_t": 3.08,
-  "best_edge_cents": 30.75,
+  "best_edge_cents": 22.36,
   "n_clearing_luck": 0,
   "persistence": {
-    "verdict": "only 19 wallets active in both periods; too few to conclude anything",
-    "n_selected": 19
+    "n_wallets_both_periods": 21,
+    "n_selected": 2,
+    "selected_oos_edge": -0.0128,
+    "everyone_else_oos_edge": 0.0069,
+    "gap": -0.0197,
+    "gap_t_stat": -0.92,
+    "rank_correlation": 0.126,
+    "verdict": "NO EVIDENCE that past performance predicts future performance -- copy trading has nothing to copy"
   },
   "within_wallet_split": {},
   "bias": [
-    {
-      "wallet": "0x9b3dcd99eec7fe11602e6534e6302c0f318d7422",
-      "overall_edge": 0.3075,
-      "extreme_band_stake": 0.0,
-      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
-    },
     {
       "wallet": "0xfe911a4e80ee71b47cd1ee690733ac4062e970ff",
       "overall_edge": 0.2236,
@@ -145,24 +145,19 @@
       "verdict": "edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy"
     },
     {
-      "wallet": "0x15e06a47d9c665bda1703ff965ea76f8e56e8d86",
-      "overall_edge": 0.0973,
-      "extreme_band_stake": 0.001,
+      "wallet": "0xb74711992caf6d04fa55eecc46b8efc95311b050",
+      "overall_edge": 0.1012,
+      "extreme_band_stake": 0.301,
+      "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
+    },
+    {
+      "wallet": "0x22271273b28d0d198a8e5ff9e7f9f75d0c24b572",
+      "overall_edge": 0.0743,
+      "extreme_band_stake": 0.498,
       "verdict": "edge is spread across price bands -- not obviously a bias-harvesting rule"
     }
   ],
   "style": [
-    {
-      "wallet": "0x9b3dcd99eec7fe11602e6534e6302c0f318d7422",
-      "n_markets": 22,
-      "both_sides_frac": 0.0,
-      "median_fills_per_market": 3.0,
-      "median_span_hours": 0.053,
-      "extreme_band_stake": 0.0,
-      "avg_size_per_market": 62784.9,
-      "style": "position taker",
-      "copyable": "COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution."
-    },
     {
       "wallet": "0xfe911a4e80ee71b47cd1ee690733ac4062e970ff",
       "n_markets": 50,
@@ -197,18 +192,29 @@
       "copyable": "RUN THE RULE. Structural, available to anyone posting the same orders, and cheaper without the copy latency."
     },
     {
-      "wallet": "0x15e06a47d9c665bda1703ff965ea76f8e56e8d86",
-      "n_markets": 36,
-      "both_sides_frac": 0.139,
-      "median_fills_per_market": 4.5,
-      "median_span_hours": 0.313,
-      "extreme_band_stake": 0.001,
-      "avg_size_per_market": 64420.5,
+      "wallet": "0xb74711992caf6d04fa55eecc46b8efc95311b050",
+      "n_markets": 17,
+      "both_sides_frac": 0.176,
+      "median_fills_per_market": 4.0,
+      "median_span_hours": 5.916,
+      "extreme_band_stake": 0.301,
+      "avg_size_per_market": 7555.3,
+      "style": "mixed / unclear",
+      "copyable": "UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion."
+    },
+    {
+      "wallet": "0x22271273b28d0d198a8e5ff9e7f9f75d0c24b572",
+      "n_markets": 38,
+      "both_sides_frac": 0.316,
+      "median_fills_per_market": 2.0,
+      "median_span_hours": 0.659,
+      "extreme_band_stake": 0.498,
+      "avg_size_per_market": 3962.4,
       "style": "mixed / unclear",
       "copyable": "UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion."
     }
   ],
   "economics": null,
-  "n_category_clearing": 2,
+  "n_category_clearing": 1,
   "n_concentrated": 1
 }

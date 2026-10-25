@@ -1,4 +1,4 @@
-# Polymarket wallet scan — 2026-10-18 10:23 UTC
+# Polymarket wallet scan — 2026-10-25 10:42 UTC
 
 ## MAYBE. 6 wallet(s) clear the luck bar AND past performance predicts future performance. Check bias attribution before building anything.
 
