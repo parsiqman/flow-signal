@@ -1,12 +1,12 @@
-# Polymarket wallet scan — 2026-11-01 13:52 UTC
+# Polymarket wallet scan — 2026-11-08 12:54 UTC
 
-## NO. No wallet is distinguishable from the luckiest of the population, and past performance does not predict future performance. There is nothing here safe to copy.
+## NO. Nothing clears the luck bar, and no out-of-sample test could be run on this sample.
 
 | | |
 |---|---|
 | mode | live |
 | wallets discovered | 400 |
-| wallets scored (>=20 fills, >=10 markets) | 119 |
+| wallets scored (>=20 fills, >=10 markets) | 74 |
 | t-stat needed to clear luck | 3.7 |
 | best t observed | 3.08 |
 | best edge observed | 22.78 c/share |
@@ -16,14 +16,8 @@
 
 ## Persistence (the decisive test)
 
-- `n_wallets_both_periods`: 21
-- `n_selected`: 2
-- `selected_oos_edge`: -0.0063
-- `everyone_else_oos_edge`: 0.008
-- `gap`: -0.0143
-- `gap_t_stat`: -0.94
-- `rank_correlation`: 0.4727
-- `verdict`: NO EVIDENCE that past performance predicts future performance -- copy trading has nothing to copy
+- `verdict`: only 17 wallets active in both periods; too few to conclude anything
+- `n_selected`: 17
 
 ### Bias attribution — `0x17525891a4ed52520ad75dac8ed5f32a58be7993`
 
@@ -37,22 +31,22 @@
 - `extreme_band_stake`: 0.353
 - `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
 
-### Bias attribution — `0xa9d71818dadc207f9ea3d3f46ff0b12e497025e9`
-
-- `overall_edge`: 0.1919
-- `extreme_band_stake`: 0.435
-- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
-
 ### Bias attribution — `0xcdc495702d5caabf60301025c5a2dd4c1a66a880`
 
 - `overall_edge`: 0.1074
 - `extreme_band_stake`: 0.078
 - `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
 
-### Bias attribution — `0xb46d7cfe0fca9b242c4acb02bac3f20ddd1c7093`
+### Bias attribution — `0x22271273b28d0d198a8e5ff9e7f9f75d0c24b572`
 
-- `overall_edge`: 0.0853
-- `extreme_band_stake`: 0.552
+- `overall_edge`: 0.071
+- `extreme_band_stake`: 0.463
+- `verdict`: edge is spread across price bands -- not obviously a bias-harvesting rule
+
+### Bias attribution — `0x53d2d3c78597a78402d4db455a680da7ef560c3f`
+
+- `overall_edge`: 0.0558
+- `extreme_band_stake`: 0.946
 - `verdict`: edge is concentrated in extreme prices -- likely harvesting favourite-longshot bias, which you should run directly rather than copy
 
 ### Trade style — `0x17525891a4ed52520ad75dac8ed5f32a58be7993`
@@ -77,17 +71,6 @@
 - `style`: position taker
 - `copyable`: COPYABLE IN PRINCIPLE. Check the slippage arithmetic before believing it survives execution.
 
-### Trade style — `0xa9d71818dadc207f9ea3d3f46ff0b12e497025e9`
-
-- `n_markets`: 71
-- `both_sides_frac`: 0.028
-- `median_fills_per_market`: 5.0
-- `median_span_hours`: 1.087
-- `extreme_band_stake`: 0.435
-- `avg_size_per_market`: 1021.7
-- `style`: mixed / unclear
-- `copyable`: UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion.
-
 ### Trade style — `0xcdc495702d5caabf60301025c5a2dd4c1a66a880`
 
 - `n_markets`: 34
@@ -99,16 +82,27 @@
 - `style`: mixed / unclear
 - `copyable`: UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion.
 
-### Trade style — `0xb46d7cfe0fca9b242c4acb02bac3f20ddd1c7093`
+### Trade style — `0x22271273b28d0d198a8e5ff9e7f9f75d0c24b572`
 
-- `n_markets`: 17
-- `both_sides_frac`: 0.647
-- `median_fills_per_market`: 8.0
-- `median_span_hours`: 37.991
-- `extreme_band_stake`: 0.552
-- `avg_size_per_market`: 969.0
-- `style`: market maker / latency
-- `copyable`: UNCOPYABLE. The edge is in being first to the book. A copier is by construction the slower side of it.
+- `n_markets`: 37
+- `both_sides_frac`: 0.297
+- `median_fills_per_market`: 2.0
+- `median_span_hours`: 0.028
+- `extreme_band_stake`: 0.463
+- `avg_size_per_market`: 3882.1
+- `style`: mixed / unclear
+- `copyable`: UNCLEAR. The signature does not match a clean style; inspect the fills before drawing any conclusion.
+
+### Trade style — `0x53d2d3c78597a78402d4db455a680da7ef560c3f`
+
+- `n_markets`: 39
+- `both_sides_frac`: 0.231
+- `median_fills_per_market`: 2.0
+- `median_span_hours`: 0.057
+- `extreme_band_stake`: 0.946
+- `avg_size_per_market`: 3879.8
+- `style`: bias harvester
+- `copyable`: RUN THE RULE. Structural, available to anyone posting the same orders, and cheaper without the copy latency.
 
 ## How to read this
 
