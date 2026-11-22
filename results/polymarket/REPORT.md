@@ -1,4 +1,4 @@
-# Polymarket scan FAILED — 2026-11-15 13:41 UTC
+# Polymarket scan FAILED — 2026-11-22 14:17 UTC
 
 ```
 Traceback (most recent call last):
